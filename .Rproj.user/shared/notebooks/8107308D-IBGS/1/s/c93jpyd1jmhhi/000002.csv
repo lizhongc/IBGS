@@ -1,0 +1,8 @@
+"0","cat(""BlockGibbsSampler <- function(y, x, n.iter = 3, n.models =10, H = 30, kapp = 20,"
+"0","                              tau = 0.9, len = 200, k = 1, gamma = 0.5,"
+"0","                              info = c(\""AIC\"", \""BIC\"", \""AICc\"", \""exBIC\""),"
+"0","                              family = c(\""gaussian\"",\""poisson\"", \""binomial\""))"")"
+"1","BlockGibbsSampler <- function(y, x, n.iter = 3, n.models =10, H = 30, kapp = 20,
+                              tau = 0.9, len = 200, k = 1, gamma = 0.5,
+                              info = c(""AIC"", ""BIC"", ""AICc"", ""exBIC""),
+                              family = c(""gaussian"",""poisson"", ""binomial""))"
