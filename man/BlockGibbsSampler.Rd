@@ -12,7 +12,7 @@ BlockGibbsSampler(
   H = 30,
   kapp = 20,
   tau = 0.9,
-  len = 200,
+  len = 250,
   k = 1,
   gamma = 0.5,
   info = c("AIC", "BIC", "AICc", "exBIC"),
@@ -34,7 +34,7 @@ BlockGibbsSampler(
 
 \item{tau}{the threshold to select the important predictors in second step, default is 0.9}
 
-\item{len}{the half number of generated samples, default is 200}
+\item{len}{the half number of generated samples, default is 250}
 
 \item{k}{the tuning parameter, default is 1}
 

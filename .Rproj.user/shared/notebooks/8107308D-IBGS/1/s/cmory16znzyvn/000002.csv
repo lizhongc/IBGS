@@ -1,0 +1,15 @@
+"0","y.pred <- predicts.Gibbs(x_test, model)"
+"0","auc(y_test, y.pred)"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Deprecated use a matrix as predictor. Unexpected results may be produced, please pass a numeric vector."
+"2","Setting direction: controls < cases
+"
+"1","Area under the curve: "
+"1",""
+"1","0.9224"
+"1",""
+"1",""
+"1",""
+"1","
+"

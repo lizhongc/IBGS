@@ -2,42 +2,51 @@
 % Please edit documentation in R/gibbs.R
 \name{GibbsSampler}
 \alias{GibbsSampler}
-\title{Gibbs sampler search algorithm}
+\title{The Metropolized restricted Gibbs sampler}
 \usage{
-GibbsSampler(y, x1, x2, s.model, len, k, gamma, p0, info, family)
+GibbsSampler(
+  y,
+  x,
+  n.vars = ncol(x),
+  n.models = 10,
+  tau = 0.9,
+  len = 1000,
+  k = 1,
+  gamma = 0.5,
+  info = c("AIC", "BIC", "AICc", "exBIC"),
+  family = c("gaussian", "poisson", "binomial")
+)
 }
 \arguments{
 \item{y}{the response variable}
 
-\item{x1}{the non-important predictors}
+\item{x}{the predictors}
 
-\item{x2}{the important predictors}
+\item{n.vars}{the number of maximal predictors included in the candidate model}
 
-\item{s.model}{the start model}
+\item{n.models}{the number of top selected models}
 
-\item{len}{the half number of generated samples}
+\item{tau}{the threshold to select the important predictors in second step, default is 0.9}
 
-\item{k}{the tuning parameter}
+\item{len}{the half number of generated samples, default is 1000}
 
-\item{gamma}{the parameter for extended BIC}
+\item{k}{the tuning parameter, default is 1}
 
-\item{p0}{the number of all predictors}
+\item{gamma}{the parameter for extended BIC, default is 0.5}
 
-\item{info}{the selected model selection criterion}
+\item{info}{the selected model selection criterion from AIC, AICc, BIC and exBIC}
 
-\item{family}{the type of model}
+\item{family}{the type of model from linear, logistic, poisson}
 }
 \value{
-a matrix of generated candidate model samples
+a list of summary
 }
 \description{
-Gibbs sampler search algorithm
+The Metropolized restricted Gibbs sampler
 }
 \examples{
 x <- matrix(rnorm(1000), ncol = 10);
 y <- rowSums(x[,1:5]) + rnorm(100)
-m.s <- GibbsSampler(y,x,x2=vector(), s.model = rep(1,10), len = 100,
-       k=1, info = "BIC", family = "gaussian")
-print(colSums(m.s)/100)
+m.s <- GibbsSampler(y,x,info = "BIC", family = "gaussian")
 
 }

@@ -1,0 +1,105 @@
+library(pROC)
+set.seed(101)
+
+tcg <- read.csv("TC_data_12h_AR_Matched.csv")
+z1 <- tcg[,8:157]
+
+z <- z1[,!(colnames(z1) == "Coriolis_parameter_absolute")]
+
+y <- z$y
+x <- as.matrix(z[,-1])
+
+n <- dim(x)[1]
+p <- dim(x)[2]
+
+index_train <- sample(x = 2, size = n, replace = TRUE, prob = c(0.8,0.2))
+
+x_train <- x[index_train ==  1, ]
+y_train <- y[index_train ==  1 ]
+
+x_test <- x[index_train ==  2, ]
+y_test <- y[index_train ==  2 ]
+
+AX  <- x_train
+y   <- y_train
+y.t <- y_test
+
+p <- PP <- ncol(AX)
+n <- dim(AX)[1]
+n1 <- dim(x_test)[1]
+
+######################################
+
+COV <- rep(0,len=PP)
+
+for(i in 1:PP){
+  fit <- glm(y~AX[,i],family=binomial())
+  COV[i] <- (summary(fit)$coefficients)[2,4]
+}
+
+a <- cbind(1:PP,COV)
+COV <- a[order(a[,2],decreasing=F),1:2]
+#print(COV)
+
+NN <- NumbPred <- 10 #The number of predictors
+
+KK <- trunc(sum(COV[,2]<=0.01)/NN)
+#KK <- 10
+
+######################################
+
+Pred <- matrix(0,n,KK); PRED <- matrix(0,n,KK); PRED.t <- matrix(0,n1,KK)
+
+COM <- 1
+USE <- COV[(NN*(COM-1)+1):(NN*COM),1]; E <- as.matrix(AX[,USE]); E.t <- as.matrix(x_test[,USE])
+
+for(i in 1:n){
+  fit <- glm(y[-i]~E[-i,],binomial(link="logit"))
+  Pred[i,COM] <- sum( c(1,E[i,])*(fit$coefficients))
+  #print(i)
+}
+
+fit <- glm(y~E,binomial(link="logit"))
+PRED[,COM] <- cbind(1,E)%*%(fit$coefficients)
+PRED.t[,COM] <- cbind(1,E.t)%*%(fit$coefficients)
+
+for(m in 2:KK){
+  
+  COM <- m
+  USE <- COV[(NN*(COM-1)+1):(NN*COM),1]; E <- as.matrix(AX[,USE])
+  
+  for(i in 1:n){
+    fit <- glm(y[-i]~E[-i,],binomial(link="logit"))
+    Pred[i,COM] <- sum( c(1,E[i,])*(fit$coefficients) )
+  }
+  
+  fit <- glm(y~E,binomial(link="logit"))
+  PRED[,COM] <- cbind(1,E)%*%(fit$coefficients)
+  PRED.t[,COM] <- cbind(1,E.t)%*%(fit$coefficients)
+}
+
+######################################
+
+w <- rep(0.5,len=KK)
+
+print(auc(y, Pred[,1]))
+print(auc(y, Pred[,2]))
+
+Stein <- function(w){
+  Pi <- exp(Pred%*%w)/(1+exp(Pred%*%w))
+  ss <- -sum( y*log(Pi)+(1-y)*log(1-Pi) )
+  ss
+}
+
+model <- optim(w,fn=Stein,method="L-BFGS-B",lower=rep(0,len=m),upper=rep(1,len=m))
+
+w <- model$par
+
+######################################
+
+Pred.0 <- PRED%*%w
+Pred.t <- PRED.t%*%w
+EProb <- exp(Pred)/(1+exp(Pred))
+
+print(auc(y, as.vector(Pred.0)))
+print(auc(y.t, as.vector(Pred.t)))
