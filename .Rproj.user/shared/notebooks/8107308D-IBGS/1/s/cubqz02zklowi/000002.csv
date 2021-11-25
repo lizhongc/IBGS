@@ -1,2 +1,0 @@
-"0","cat(""model <- BlockGibbsSampler(y_train, x_train, info = \""exBIC\"", family = \""binomial\"")"")"
-"1","model <- BlockGibbsSampler(y_train, x_train, info = ""exBIC"", family = ""binomial"")"

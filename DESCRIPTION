@@ -1,7 +1,7 @@
 Package: IBGS
 Type: Package
 Title: Variable selection in ultrahigh dimensions using Gibbs sampler
-Version: 0.1.2
+Version: 0.1.3
 Author: Lizhong Chen
 Maintainer: Lizhong Chen <lizhongc@student.unimelb.edu.au>
 Description: This package provides the iterated block Gibbs sampler, called IBGS, to solve the variable selection problem in ultrahigh dimensions.

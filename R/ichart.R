@@ -1,4 +1,10 @@
-ichart.Gibbs <- function(result){
+#' I-chart for the generated sequence
+#'
+#' @param result a list of results
+#'
+#' @export
+#'
+plots.ichart <- function(result){
   v <- result$m.sic
   n <- length(v)
   n.half <- n/2

@@ -5,7 +5,7 @@
 
 #' @export
 
-plots.Gibbs <- function(result, n.vars = 20){
+plots.vr <- function(result, n.vars = 20){
   colors  <- rep(0,n.vars)
   v.order <- order(result$v.prob, decreasing = TRUE)
   v.freq  <- result$v.prob[v.order[1:n.vars]]

@@ -1,3 +1,0 @@
-"0","cat(""install.packages(\""IBGS_0.1.0.tar.gz\"", repos = NULL)\nlibrary(IBGS)"")"
-"1","install.packages(""IBGS_0.1.0.tar.gz"", repos = NULL)
-library(IBGS)"

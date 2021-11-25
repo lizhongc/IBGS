@@ -1,4 +1,0 @@
-"0","cat(""library(doParallel)\nregisterDoParallel(ncores)\n"")"
-"1","library(doParallel)
-registerDoParallel(ncores)
-"
