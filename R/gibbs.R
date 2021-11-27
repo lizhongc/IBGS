@@ -80,6 +80,7 @@ GibbsSampler <- function(y, x, n.vars = ncol(x), n.models = 10,
   result$v.prob   <- v.prob
   result$v.select <- v.select
   result$tau      <- tau
+  result$x.predictors <- x.predictors
 
   return(result)
 }

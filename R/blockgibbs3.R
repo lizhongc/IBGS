@@ -42,7 +42,7 @@ BlockGibbsSampler.step3 <- function(y, x1, x2, n.models, x.predictors, H, kapp, 
   result <- result.GibbsSampler(m.matrix, y, x.s, k, gamma, p0, n.models, info, family)
 
   v.prob    <- rep(0, p1+p2)
-  v.prob[as.numeric(colnames(x.s))] <- colSums(m.matrix[,-1])/len
+  v.prob[as.numeric(colnames(x.s))] <- colSums(m.matrix[,-1])/(4*len)
   v.select  <- x.predictors[v.prob > tau]
 
   result$v.prob   <- v.prob
