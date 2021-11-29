@@ -4,7 +4,7 @@
 \alias{GibbsSamplerStep}
 \title{Gibbs sampler search algorithm}
 \usage{
-GibbsSamplerStep(y, x1, x2, s.model, len, k, gamma, p0, info, family)
+GibbsSamplerStep(y, x1, x2, s.model, perm, len, k, gamma, p0, info, family)
 }
 \arguments{
 \item{y}{the response variable}
@@ -14,6 +14,8 @@ GibbsSamplerStep(y, x1, x2, s.model, len, k, gamma, p0, info, family)
 \item{x2}{the important predictors}
 
 \item{s.model}{the start model}
+
+\item{perm}{the permutation of Gibbs sampler}
 
 \item{len}{the half number of generated samples}
 

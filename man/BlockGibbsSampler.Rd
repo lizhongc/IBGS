@@ -12,6 +12,7 @@ BlockGibbsSampler(
   H = 30,
   kapp = 20,
   tau = 0.9,
+  perm = TRUE,
   len = 250,
   k = 1,
   gamma = 0.5,
@@ -33,6 +34,8 @@ BlockGibbsSampler(
 \item{kapp}{the number of selected predictors in first step, default is 20}
 
 \item{tau}{the threshold to select the important predictors in second step, default is 0.9}
+
+\item{perm}{the permutation of Gibbs sampler, default is TRUE}
 
 \item{len}{the half number of generated samples, default is 250}
 

@@ -4,7 +4,7 @@
 \alias{BlockGibbsSampler.step1}
 \title{The first step in the block Gibbs sampler search algorithm}
 \usage{
-BlockGibbsSampler.step1(y, x1, x2, h, len, k, gamma, p0, info, family)
+BlockGibbsSampler.step1(y, x1, x2, h, perm, len, k, gamma, p0, info, family)
 }
 \arguments{
 \item{y}{the response variable}
@@ -14,6 +14,8 @@ BlockGibbsSampler.step1(y, x1, x2, h, len, k, gamma, p0, info, family)
 \item{x2}{the important predictors}
 
 \item{h}{the number of small groups}
+
+\item{perm}{the permutation of Gibbs sampler}
 
 \item{len}{the half number of generated samples}
 

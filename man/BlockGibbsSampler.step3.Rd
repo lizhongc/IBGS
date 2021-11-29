@@ -13,6 +13,7 @@ BlockGibbsSampler.step3(
   H,
   kapp,
   tau,
+  perm,
   len,
   k,
   gamma,
@@ -37,6 +38,8 @@ BlockGibbsSampler.step3(
 \item{kapp}{the number of selected predictors in first step}
 
 \item{tau}{the threshold to select the important predictors in second step}
+
+\item{perm}{the permutation of Gibbs sampler}
 
 \item{len}{the half number of generated samples}
 

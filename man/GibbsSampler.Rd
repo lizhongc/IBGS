@@ -8,6 +8,7 @@ GibbsSampler(
   y,
   x,
   n.vars = ncol(x),
+  perm = TRUE,
   n.models = 10,
   tau = 0.9,
   len = 1000,
@@ -23,6 +24,8 @@ GibbsSampler(
 \item{x}{the predictors}
 
 \item{n.vars}{the number of maximal predictors included in the candidate model}
+
+\item{perm}{the permutation of Gibbs sampler, default TRUE}
 
 \item{n.models}{the number of top selected models}
 

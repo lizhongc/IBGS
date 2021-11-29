@@ -3,6 +3,7 @@
 #' @param y        the response variable
 #' @param x        the predictors
 #' @param n.vars   the number of maximal predictors included in the candidate model
+#' @param perm     the permutation of Gibbs sampler, default TRUE
 #' @param n.models the number of top selected models
 #' @param tau      the threshold to select the important predictors in second step, default is 0.9
 #' @param len      the half number of generated samples, default is 1000
@@ -20,7 +21,7 @@
 #' m.s <- GibbsSampler(y,x,info = "BIC", family = "gaussian")
 #'
 
-GibbsSampler <- function(y, x, n.vars = ncol(x), n.models = 10,
+GibbsSampler <- function(y, x, n.vars = ncol(x), perm = TRUE, n.models = 10,
                          tau = 0.9, len = 1000, k = 1, gamma = 0.5,
                          info = c("AIC", "BIC", "AICc", "exBIC"),
                          family = c("gaussian","poisson", "binomial")){
@@ -34,16 +35,21 @@ GibbsSampler <- function(y, x, n.vars = ncol(x), n.models = 10,
   z  <- as.data.frame(cbind(y,x))
   colnames(z)[1] <- "y"
 
-  s.index  <- c(rep(1,n.vars), rep(0, n - n.vars))
+  s.index  <- c(rep(1,n.vars), rep(0, p - n.vars))
   m.models <- c(1, s.index)
   m.temp   <- glm(y ~ .,family = family, data = z[,c(1,s.index)==1])
 
   j <- 0
   while(j < 2*len){
       for(i in 1:p){
+
+      if(perm){
+        s <- sample(p,p)
+      }else s <- 1:p
+
       t.index    <- s.index
       d.index    <- t.index
-      d.index[i] <- 1 - t.index[i]
+      d.index[s[i]] <- 1 - t.index[s[i]]
 
       if(0 < sum(d.index) & sum(d.index) <= n.vars){
         m.curr <- m.temp
@@ -52,7 +58,7 @@ GibbsSampler <- function(y, x, n.vars = ncol(x), n.models = 10,
         A  <- ac.ratio(m.curr, m.next, k, gamma, p, info = info)
         mu <- runif(1)
         if(mu < A){
-          t.index[i] <- 1 - t.index[i]
+          t.index[s[i]] <- 1 - t.index[s[i]]
           m.temp     <- m.next
         }
         else{
