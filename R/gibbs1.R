@@ -19,10 +19,10 @@ GibbsSamplerStep <- function(y, x1, x2, s.model, perm, len, k, gamma, p0, info, 
 
   p1 <- dim(x1)[2]
   if(is.null(dim(x2))){
-    z  <- as.data.frame(cbind(y,x1))
+    z  <- as.data.frame(cbind(y,x1), stringsAsFactors = TRUE)
     p2 <- 0
   }else{
-    z  <- as.data.frame(cbind(y,x1,x2))
+    z  <- as.data.frame(cbind(y,x1,x2), stringsAsFactors = TRUE)
     p2 <- dim(x2)[2]
   }
   colnames(z)[1] <- "y"

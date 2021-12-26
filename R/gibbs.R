@@ -32,7 +32,7 @@ GibbsSampler <- function(y, x, n.vars = ncol(x), perm = TRUE, n.models = 10,
   x.predictors <- colnames(x)
   colnames(x)  <- 1:p
 
-  z  <- as.data.frame(cbind(y,x))
+  z  <- as.data.frame(cbind(y,x), stringsAsFactors = TRUE)
   colnames(z)[1] <- "y"
 
   s.index  <- c(rep(1,n.vars), rep(0, p - n.vars))

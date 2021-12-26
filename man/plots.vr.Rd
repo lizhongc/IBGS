@@ -4,7 +4,7 @@
 \alias{plots.vr}
 \title{plot the marginal probability for top predictors}
 \usage{
-plots.vr(result, n.vars = 20)
+plots.vr(result, n.vars = 20, lwd = 2, side = 1, line = 0.25, las = 2, cex = 1)
 }
 \arguments{
 \item{result}{the result from IBGS}
