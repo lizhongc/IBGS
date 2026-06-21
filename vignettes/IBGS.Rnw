@@ -1,0 +1,88 @@
+\documentclass[a4paper]{article}
+%\VignetteIndexEntry{Getting started with IBGS}
+%\VignetteEngine{utils::Sweave}
+\usepackage[utf8]{inputenc}
+
+\title{Getting started with \texttt{IBGS}}
+\author{Lizhong Chen}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+\texttt{IBGS} performs variable selection in ultrahigh dimensions, where the
+number of predictors \texttt{p} can far exceed the sample size \texttt{n}.  The
+\emph{iterated block Gibbs sampler} grows a small, stable set of important
+predictors by alternating random block screening and refinement, then records a
+long Gibbs run over the surviving candidates.  The whole search runs in a single
+multicore C routine; models are scored by the AIC, BIC, AICc or extended BIC
+criterion.  See \texttt{?IBGS} for an overview and \texttt{?glmIBGS} for the
+algorithm in detail.
+
+This vignette walks through a small generalized-linear-model example.  The same
+interface serves the Cox model (\texttt{coxIBGS}/\texttt{coxGibbs}) and the
+linear mixed model (\texttt{rlmIBGS}/\texttt{rlmGibbs}).
+
+\section{A small example}
+
+Simulate a sparse Gaussian problem with the signal in the first three
+predictors:
+
+<<setup>>=
+library(IBGS)
+set.seed(1)
+n <- 100
+p <- 60
+x <- matrix(rnorm(n * p), n, p)
+y <- as.numeric(x[, 1:3] %*% c(3, -3, 3) + rnorm(n))
+@
+
+Run the block sampler and print the fit:
+
+<<fit>>=
+fit <- glmIBGS(y, x, criterion = "BIC")
+fit
+@
+
+The \texttt{summary} method tabulates the selected variables and the top models:
+
+<<summary>>=
+summary(fit)
+@
+
+\texttt{coef} returns the coefficients of the best model (or, with
+\texttt{average = TRUE}, a model-averaged vector):
+
+<<coef>>=
+head(coef(fit))
+@
+
+The diagnostic plots show the marginal inclusion probabilities, the visit
+frequency of the top models, and an I-chart of the criterion sequence.  Here is
+the inclusion-probability plot:
+
+\begin{center}
+<<varprob, fig=TRUE, height=4, width=6>>=
+plotVarProb(fit, n.vars = 15)
+@
+\end{center}
+
+Finally, the \texttt{predict} method forms model-averaged predictions on new
+data, and \texttt{fitted} returns them for the training data:
+
+<<predict>>=
+predict(fit, x[1:5, ])
+head(fitted(fit))
+@
+
+\section{Tuning the search}
+
+The defaults work well, but a few arguments control the search:
+\texttt{block.size} (predictors per screening block), \texttt{n.keep} (how many
+survive each screen), \texttt{threshold} (the inclusion-probability cut-off),
+\texttt{n.refine} (refinement rounds) and \texttt{n.draws} (run length).  Set
+\texttt{n.cores} above 1 to screen blocks in parallel.  For a manageable design
+the non-block sampler \texttt{glmGibbs} searches all predictors directly.
+
+\end{document}
