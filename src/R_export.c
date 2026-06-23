@@ -334,7 +334,7 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
     SET_STRING_ELT(nms, 4, mkChar("v.prob"));
     setAttrib(out, R_NamesSymbol, nms);
 
-    UNPROTECT(10);
+    UNPROTECT(11);   /* y2, st2, X2, pw2, msic, vprob, coef, mic, mfrq, out, nms */
     return out;
 }
 

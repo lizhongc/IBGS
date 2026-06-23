@@ -21,6 +21,19 @@ test_that("glmGibbs (gaussian) runs and ranks the true predictors highly", {
   expect_recovers(fit, d$truth)
 })
 
+test_that("permute = TRUE (random permutation) and FALSE both recover the signal", {
+  set.seed(2)
+  d  <- sim_gauss(n = 100, p = 20)
+  ft <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, permute = TRUE)
+  ff <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, permute = FALSE)
+  expect_recovers(ft, d$truth)
+  expect_recovers(ff, d$truth)
+  # permute = TRUE must be reproducible under a fixed seed
+  set.seed(2); a <- glmGibbs(d$y, d$x, n.draws = 120, permute = TRUE)
+  set.seed(2); b <- glmGibbs(d$y, d$x, n.draws = 120, permute = TRUE)
+  expect_equal(a$marginal.prob, b$marginal.prob)
+})
+
 test_that("binomial and poisson families run via both samplers", {
   set.seed(3)
   db <- sim_binom()

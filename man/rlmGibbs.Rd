@@ -38,7 +38,10 @@ used with \code{Z}}
 \item{max.size}{the maximal number of fixed predictors in a candidate model,
 default is \code{ncol(x)}}
 
-\item{permute}{the permutation of the Gibbs sampler, default is TRUE}
+\item{permute}{the coordinate visiting order within each Gibbs sweep.
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
+predictor is updated exactly once per sweep (without replacement);
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{n.models}{the number of top selected models, default is 10}
 
@@ -81,7 +84,7 @@ counterpart of \code{\link{glmGibbs}}; use \code{\link{rlmIBGS}} in ultrahigh
 dimensions.
 }
 \details{
-\code{rlmGibbs} runs a single random-scan Metropolis-within-Gibbs walk over the
+\code{rlmGibbs} runs a single random-permutation Metropolis-within-Gibbs walk over the
 inclusion indicators of all \code{p} fixed-effect predictors, with the model size
 capped at \code{max.size} and no block screening, just as \code{\link{glmGibbs}}
 does for the GLM families -- but on \emph{whitened} data.  With the random part

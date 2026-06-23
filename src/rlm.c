@@ -50,6 +50,7 @@ int rlwsallc(rlwst *ws, int capt, int n)
 
     ws->inc    = R_Calloc((size_t) capt, int);
     ws->active = R_Calloc((size_t) capt, int);
+    ws->ord    = R_Calloc((size_t) capt, int);
     ws->G      = R_Calloc((size_t) capt * capt, double);
     ws->Gy     = R_Calloc((size_t) capt, double);
     ws->Sbuf   = R_Calloc((size_t) capt * capt, double);
@@ -65,6 +66,7 @@ void rlwsfree(rlwst *ws)
 {
     R_Free(ws->inc);
     R_Free(ws->active);
+    R_Free(ws->ord);
     R_Free(ws->G);
     R_Free(ws->Gy);
     R_Free(ws->Sbuf);
@@ -94,6 +96,7 @@ int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int 
     }
     int    *inc    = ws->inc;
     int    *active = ws->active;
+    int    *ord    = ws->ord;
     double *G      = ws->G;
     double *Gy     = ws->Gy;
     double *Sbuf   = ws->Sbuf;
@@ -169,9 +172,19 @@ int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int 
 
     int nsweep = 2 * len;
     for (int sw = 0; sw < nsweep; sw++) {
+        /* perm = TRUE: visit each of the p1 toggleable coordinates exactly once
+         * per sweep, in a fresh random order (Fisher-Yates), i.e. without
+         * replacement.  perm = FALSE: the fixed 0..p1-1 systematic sweep. */
+        if (perm) {
+            for (int t = 0; t < p1; t++) ord[t] = t;
+            for (int t = p1 - 1; t > 0; t--) {
+                int u = (int) (UNIF(rng) * (t + 1));
+                if (u > t) u = t;                 /* guard the UNIF==~1 edge */
+                int tmp = ord[t]; ord[t] = ord[u]; ord[u] = tmp;
+            }
+        }
         for (int step = 0; step < p1; step++) {
-            int j = perm ? (int) (UNIF(rng) * p1) : step;
-            if (j >= p1) j = p1 - 1;
+            int j = perm ? ord[step] : step;
 
             int pnsel = nsel + (inc[j] ? -1 : 1);
             if (pnsel < 1 || pnsel > nvars) continue;

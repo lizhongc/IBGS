@@ -66,7 +66,8 @@
 
 
 #define IRLS_MAXIT 50    /* hard cap on IRLS iterations (safety net)            */
-#define IRLS_TOL   1e-10 /* relative deviance change treated as convergence     */
+#define IRLS_TOL   1e-8  /* relative deviance change treated as convergence,    */
+                         /* matching R's glm() default (glm.control epsilon)    */
 #define MU_EPS     1e-10 /* clamp keeping mu inside (0,1) / (0,inf) so logs and */
                          /* divisions stay finite at the boundary of the range  */
 
@@ -150,25 +151,27 @@ static double glmdev(int family, const double *y, const double *mu, const double
 }
 
 /*
- * -2*logLik for the converged means, matching R's glm() aic component (so that
- * AIC = glmm2ll + 2*npar reproduces R's AIC()).
+ * The MODEL-DEPENDENT part of -2*logLik for the converged means.  The full
+ * -2*logLik that matches R's glm() aic component (so AIC = -2logLik + 2*npar
+ * reproduces R's AIC()) splits into
  *
- * Unlike the deviance, the full log-likelihood includes the data-only
- * normalising constants (the binomial coefficient, the poisson log(y!)), which
- * R *does* include in AIC.  We therefore add them back here:
+ *     -2logLik  =  glmm2ll(mu)  +  glmllconst(y, pw)
+ *
+ * where glmm2ll() holds the terms that depend on the fitted means mu (and so
+ * change with every candidate model) and glmllconst() holds the data-only
+ * normalising constant (the binomial coefficient / poisson log(y!)) that is the
+ * same for every model.  Splitting them lets the constant be precomputed once
+ * per run -- mirroring the gaussian path's sumlogw -- instead of being
+ * recomputed (3 lgamma/obs for binomial, 1 for poisson) on every candidate fit.
+ * The caller (modelic) adds the precomputed constant back before forming the IC.
  *
  *   binomial: pw[i] are the trial counts m_i and y[i] the success *proportion*,
- *     so the count of successes is s_i = m_i*y_i.  The per-observation
- *     log-likelihood is
- *        log C(m_i,s_i) + s_i log(mu_i) + (m_i-s_i) log(1-mu_i),
- *     with log C(m,s) = lgamma(m+1) - lgamma(s+1) - lgamma(m-s+1).  m_i and s_i
- *     are rounded to the nearest integer (floor(x+0.5)) to match how R forms
- *     the binomial response from a proportion + weights.
+ *     so successes s_i = m_i*y_i, rounded (floor(x+0.5)) to match how R forms
+ *     the binomial response.  Model-dependent terms:
+ *        s_i log(mu_i) + (m_i - s_i) log(1 - mu_i).
+ *   poisson: model-dependent terms pw[i]*( y_i log(mu_i) - mu_i ).
  *
- *   poisson: log-likelihood pw[i]*( y_i log(mu_i) - mu_i - log(y_i!) ), with
- *     log(y_i!) = lgamma(y_i + 1).
- *
- * Returns -2 * sum of the per-observation log-likelihoods.
+ * Returns -2 * sum of the model-dependent per-observation log-likelihood terms.
  */
 static double glmm2ll(int family, const double *y, const double *mu, const double *pw, int n)
 {
@@ -178,16 +181,42 @@ static double glmm2ll(int family, const double *y, const double *mu, const doubl
         for (i = 0; i < n; i++) {
             double m = floor(pw[i] + 0.5);          /* trials    */
             double s = floor(pw[i] * y[i] + 0.5);   /* successes */
-            double t = lgamma(m + 1.0) - lgamma(s + 1.0) - lgamma(m - s + 1.0);
+            double t = 0.0;
             if (s > 0.0)     t += s * log(mu[i]);
             if (m - s > 0.0) t += (m - s) * log(1.0 - mu[i]);
             ll += t;
         }
     } else { /* poisson */
         for (i = 0; i < n; i++)
-            ll += pw[i] * (y[i] * log(mu[i]) - mu[i] - lgamma(y[i] + 1.0));
+            ll += pw[i] * (y[i] * log(mu[i]) - mu[i]);
     }
     return -2.0 * ll;
+}
+
+/*
+ * The DATA-ONLY normalising constant of -2*logLik (see glmm2ll): the part that
+ * depends only on the response y and the weights pw, not on the fitted means, so
+ * it is identical for every candidate model and is computed once per run.
+ *   binomial: -2 * sum_i [ lgamma(m_i+1) - lgamma(s_i+1) - lgamma(m_i-s_i+1) ]
+ *   poisson : -2 * sum_i [ -pw_i * lgamma(y_i+1) ]  =  2 * sum_i pw_i*lgamma(y_i+1)
+ * For binary data (m_i = 1) the binomial term is exactly 0.  Only called for the
+ * binomial/poisson families (the gaussian path uses sumlogw instead).
+ */
+static double glmllconst(int family, const double *y, const double *pw, int n)
+{
+    double c = 0.0;
+    int i;
+    if (family == FAM_BINOMIAL) {
+        for (i = 0; i < n; i++) {
+            double m = floor(pw[i] + 0.5);          /* trials    */
+            double s = floor(pw[i] * y[i] + 0.5);   /* successes */
+            c += lgamma(m + 1.0) - lgamma(s + 1.0) - lgamma(m - s + 1.0);
+        }
+    } else { /* poisson */
+        for (i = 0; i < n; i++)
+            c += -pw[i] * lgamma(y[i] + 1.0);
+    }
+    return -2.0 * c;
 }
 
 int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, double *wq, double *wn, double *dev2, const double *b0, double *bout)
@@ -295,7 +324,9 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
     }
 
     /* Recompute the converged means from the final eta (the loop may have exited
-     * on the convergence test before refreshing mu) and report -2logLik. */
+     * on the convergence test before refreshing mu) and report the
+     * model-dependent part of -2logLik; the caller adds the data-only constant
+     * (glmllconst) before forming the IC. */
     for (i = 0; i < n; i++) {
         double e = eta[i], m;
         if (family == FAM_BINOMIAL) {
@@ -451,6 +482,7 @@ typedef struct {
     /* glm (binomial/poisson) */
     const double *y, *X, *pw; double *D, *wq, *wn;
     double *bfull, *b0, *bprop;   /* warm-start coefficients */
+    double m2ll_const;            /* data-only -2logLik constant, precomputed once */
 } fitctx;
 
 /* Information criterion of the model with the given active column set.
@@ -483,7 +515,9 @@ static double modelic(fitctx *c, const int *active, int q, int *ok)
             *ok = 0; return 0.0;
         }
         *ok = 1;
-        return icval(dev2, q, q - 1, c->n, c->info, c->gamma, c->p0);
+        /* dev2 is the model-dependent part of -2logLik; add the precomputed
+         * data-only constant to recover the full -2logLik (see glmllconst). */
+        return icval(dev2 + c->m2ll_const, q, q - 1, c->n, c->info, c->gamma, c->p0);
     }
 }
 
@@ -501,6 +535,7 @@ int gbwsallc(gbwst *ws, int capt, int n, int family)
 
     ws->inc    = R_Calloc((size_t) capt, int);
     ws->active = R_Calloc((size_t) capt, int);
+    ws->ord    = R_Calloc((size_t) capt, int);
     ws->bcols  = R_Calloc((size_t) capt, int);
     ws->s0     = R_Calloc((size_t) capt, int);
     ws->fr     = R_Calloc((size_t) capt, double);
@@ -532,6 +567,7 @@ void gbwsfree(gbwst *ws)
 {
     R_Free(ws->inc);
     R_Free(ws->active);
+    R_Free(ws->ord);
     R_Free(ws->bcols);
     R_Free(ws->s0);
     R_Free(ws->fr);
@@ -567,6 +603,7 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
     }
     int    *inc    = ws->inc;
     int    *active = ws->active;
+    int    *ord    = ws->ord;
     double *G = ws->G, *Gy = ws->Gy, *Sbuf = ws->Sbuf, *bbuf = ws->bbuf;
     double *D = ws->D, *wq = ws->wq, *wn = ws->wn;
     double *bfull = ws->bfull, *b0 = ws->b0, *bprop = ws->bprop;
@@ -576,7 +613,7 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
     c.gamma = gamma; c.y = y; c.X = X; c.pw = pw;
     c.G = c.Gy = NULL; c.Sbuf = c.bbuf = NULL; c.D = c.wq = c.wn = NULL;
     c.bfull = c.b0 = c.bprop = NULL;
-    c.yty = 0.0; c.sumlogw = 0.0;
+    c.yty = 0.0; c.sumlogw = 0.0; c.m2ll_const = 0.0;
 
     /* The GLM warm-start coefficient state is reused across blocks, so clear it
      * at the start of each run (a fresh calloc gave the same zero start). */
@@ -629,6 +666,10 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
             memcpy(D + (size_t) (a + 1) * n, X + (size_t) a * n, (size_t) n * sizeof(double));
         c.D = D; c.wq = wq; c.wn = wn;
         c.bfull = bfull; c.b0 = b0; c.bprop = bprop;
+        /* data-only -2logLik normalising constant: same for every candidate
+         * model, so compute it once here (cf. sumlogw on the gaussian path)
+         * instead of recomputing the lgamma terms on every fit. */
+        c.m2ll_const = glmllconst(family, y, pw, n);
     }
 
     /* On accepting a model, store its fitted coefficients as the current state
@@ -678,11 +719,21 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
      * `len` are recorded.  One sweep = p1 single-coordinate flip attempts. */
     int nsweep = 2 * len;
     for (int sw = 0; sw < nsweep; sw++) {
+        /* perm = TRUE: visit each of the p1 toggleable coordinates exactly once
+         * per sweep, in a fresh random order (Fisher-Yates), i.e. without
+         * replacement.  perm = FALSE: the fixed 0..p1-1 systematic sweep. */
+        if (perm) {
+            for (int t = 0; t < p1; t++) ord[t] = t;
+            for (int t = p1 - 1; t > 0; t--) {
+                int u = (int) (UNIF(rng) * (t + 1));
+                if (u > t) u = t;                 /* guard the UNIF==~1 edge */
+                int tmp = ord[t]; ord[t] = ord[u]; ord[u] = tmp;
+            }
+        }
         for (int step = 0; step < p1; step++) {
-            /* pick the coordinate to flip: a random scan (perm) draws j
-             * uniformly, otherwise sweep the p1 coords in order */
-            int j = perm ? (int) (UNIF(rng) * p1) : step;
-            if (j >= p1) j = p1 - 1;
+            /* pick the coordinate to flip: random permutation order (perm) or
+             * the in-order sweep position; both are always in [0, p1-1] */
+            int j = perm ? ord[step] : step;
 
             /* reject moves that would empty the model or exceed the size cap */
             int pnsel = nsel + (inc[j] ? -1 : 1);

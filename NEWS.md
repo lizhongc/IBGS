@@ -1,3 +1,27 @@
+# IBGS 1.0.1
+
+## Performance
+
+* The data-only normalising constant of the binomial/poisson `-2logLik` (the
+  binomial coefficient `lgamma` terms / poisson `log(y!)`) is now computed once
+  per run instead of on every candidate fit. It is the same for every model, so
+  reported information criteria and variable selection are unchanged (still match
+  R's `glm()`/`AIC()`), but the per-fit `lgamma` work is removed.
+* The IRLS convergence tolerance for the binomial and poisson families was
+  relaxed from `1e-10` to `1e-8` (R's `glm()` default), trimming a few unneeded
+  iterations per fit. Variable selection is unchanged; fitted values match R's
+  `glm()` to its own tolerance.
+
+## Bug fixes
+
+* `permute = TRUE` (the default) now performs a genuine random permutation of the
+  predictors in every Gibbs sweep (Fisher–Yates), so each coordinate is updated
+  exactly once per sweep, without replacement. Previously it drew coordinates
+  independently and uniformly *with* replacement (an i.i.d. random scan), which
+  visited only about 63% of the coordinates per sweep and was inconsistent with
+  the documented "permutation" behaviour. Results for a given `set.seed()` will
+  differ from 1.0.0.
+
 # IBGS 1.0.0
 
 Initial release.

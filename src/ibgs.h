@@ -172,6 +172,7 @@ typedef struct {
     int     family;      /* FAM_* this workspace was sized for */
     int    *inc;         /* inclusion indicator scratch                  */
     int    *active;      /* active-column list scratch                   */
+    int    *ord;         /* per-sweep random visit order (Fisher-Yates)  */
     double *G, *Gy, *Sbuf, *bbuf;                /* gaussian Gram path */
     double *D, *wq, *wn, *bfull, *b0, *bprop;   /* GLM IRLS path      */
     int    *bcols, *s0;  /* screening: gathered column ids / start model  */
@@ -199,6 +200,7 @@ typedef struct {
     int     n;           /* rows */
     int    *inc;         /* inclusion indicator scratch       */
     int    *active;      /* active-column list scratch        */
+    int    *ord;         /* per-sweep random visit order (Fisher-Yates) */
     int    *order;       /* observations sorted by time desc. */
     int    *bcols, *s0;  /* screening: gathered column ids / start model */
     double *wq, *wn, *bfull, *b0, *bprop;  /* per-fit scratch */
@@ -221,6 +223,7 @@ typedef struct {
     int     n;           /* rows */
     int    *inc;         /* inclusion indicator scratch  */
     int    *active;      /* active-column list scratch   */
+    int    *ord;         /* per-sweep random visit order (Fisher-Yates) */
     double *G, *Gy, *Sbuf, *bbuf;  /* whitened Gram path */
     int    *bcols, *s0;  /* screening: gathered column ids / start model */
     double *fr, *Xb;     /* screening: block freqs / gathered block design */

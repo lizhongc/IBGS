@@ -14,7 +14,10 @@
 #   x        the predictors
 #   max.size the maximal number of predictors in a candidate model,
 #            default is ncol(x)
-#   permute  the permutation of Gibbs sampler, default is TRUE
+#   permute  the coordinate visiting order within each Gibbs sweep. TRUE
+#            (default) draws a fresh random permutation each sweep, so every
+#            predictor is updated exactly once per sweep (without replacement);
+#            FALSE uses a fixed in-order systematic sweep.
 #   n.models the number of top selected models, default is 10
 #   threshold the threshold to select the important predictors, default 0.9
 #   n.draws  the half number of generated samples, default is 1000

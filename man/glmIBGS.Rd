@@ -36,7 +36,10 @@ glmIBGS(
 
 \item{threshold}{the threshold to select the important predictors in second step, default is 0.9}
 
-\item{permute}{the permutation of Gibbs sampler, default is TRUE}
+\item{permute}{the coordinate visiting order within each Gibbs sweep.
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
+predictor is updated exactly once per sweep (without replacement);
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{n.draws}{the half number of generated samples, default is 250}
 
@@ -104,9 +107,9 @@ then followed by a long Gibbs run over the final candidate set, which produces
 the recorded indicator samples, their information criteria, and the marginal
 inclusion probabilities returned to R.
 
-Each Gibbs sampler is a random-scan Metropolis-within-Gibbs walk over the model
-indicator vector: at each step one coordinate is flipped and the flip is
-accepted with probability
+Each Gibbs sampler is a random-permutation Metropolis-within-Gibbs walk over the
+model indicator vector: each sweep visits every coordinate once in a fresh random
+order, flipping it and accepting the flip with probability
 \code{min(1, exp(inv.temp * (IC.current - IC.proposed)))}.  Because a lower
 criterion is better, a flip that lowers the criterion is always accepted and a
 worsening flip is accepted with a probability that decays in the increase; the

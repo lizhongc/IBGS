@@ -19,7 +19,10 @@
 #   block.size the number of predictors in small groups, default is 30
 #   n.keep     the number of selected predictors in the first step, default 20
 #   threshold  the threshold to select the important predictors, default 0.9
-#   permute    the permutation of the Gibbs sampler, default is TRUE
+#   permute    the coordinate visiting order within each Gibbs sweep. TRUE
+#              (default) draws a fresh random permutation each sweep, so every
+#              predictor is updated exactly once per sweep (without
+#              replacement); FALSE uses a fixed in-order systematic sweep.
 #   n.draws    the half number of generated samples, default is 250
 #   inv.temp the tuning parameter, default is 1
 #   ebic.gamma the parameter for extended BIC, default is 0.5

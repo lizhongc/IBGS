@@ -48,7 +48,10 @@ used with \code{Z}}
 
 \item{threshold}{the threshold to select the important predictors, default 0.9}
 
-\item{permute}{the permutation of the Gibbs sampler, default is TRUE}
+\item{permute}{the coordinate visiting order within each Gibbs sweep.
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
+predictor is updated exactly once per sweep (without replacement);
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{n.draws}{the half number of generated samples, default is 250}
 

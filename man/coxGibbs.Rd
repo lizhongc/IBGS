@@ -28,7 +28,10 @@ coxGibbs(
 \item{max.size}{the maximal number of predictors in a candidate model,
 default is \code{ncol(x)}}
 
-\item{permute}{the permutation of the Gibbs sampler, default is TRUE}
+\item{permute}{the coordinate visiting order within each Gibbs sweep.
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
+predictor is updated exactly once per sweep (without replacement);
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{n.models}{the number of top selected models, default is 10}
 
@@ -71,7 +74,7 @@ models in C.  Intended for problems where the full design is
 manageable; use \code{\link{coxIBGS}} in ultrahigh dimensions.
 }
 \details{
-\code{coxGibbs} runs a single random-scan Metropolis-within-Gibbs walk over the
+\code{coxGibbs} runs a single random-permutation Metropolis-within-Gibbs walk over the
 inclusion indicators of all \code{p} predictors, with the model size capped at
 \code{max.size} and no block screening, just as \code{\link{glmGibbs}} does for
 the GLM families.  The acceptance rule \code{min(1, exp(inv.temp *

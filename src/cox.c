@@ -316,6 +316,7 @@ int cxwsallc(cxwst *ws, int capt, int n)
 
     ws->inc    = R_Calloc((size_t) capt, int);
     ws->active = R_Calloc((size_t) capt, int);
+    ws->ord    = R_Calloc((size_t) capt, int);
     ws->order  = R_Calloc((size_t) (n > 0 ? n : 1), int);
     ws->bcols  = R_Calloc((size_t) capt, int);
     ws->s0     = R_Calloc((size_t) capt, int);
@@ -334,6 +335,7 @@ void cxwsfree(cxwst *ws)
 {
     R_Free(ws->inc);
     R_Free(ws->active);
+    R_Free(ws->ord);
     R_Free(ws->order);
     R_Free(ws->bcols);
     R_Free(ws->s0);
@@ -371,6 +373,7 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
     }
     int    *inc   = ws->inc;
     int    *active = ws->active;
+    int    *ord    = ws->ord;
     int    *order  = ws->order;
     double *wq     = ws->wq;
     double *wn     = ws->wn;
@@ -428,9 +431,19 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
      * One sweep = p1 single-coordinate flip attempts. */
     int nsweep = 2 * len;
     for (int sw = 0; sw < nsweep; sw++) {
+        /* perm = TRUE: visit each of the p1 toggleable coordinates exactly once
+         * per sweep, in a fresh random order (Fisher-Yates), i.e. without
+         * replacement.  perm = FALSE: the fixed 0..p1-1 systematic sweep. */
+        if (perm) {
+            for (int t = 0; t < p1; t++) ord[t] = t;
+            for (int t = p1 - 1; t > 0; t--) {
+                int u = (int) (UNIF(rng) * (t + 1));
+                if (u > t) u = t;                 /* guard the UNIF==~1 edge */
+                int tmp = ord[t]; ord[t] = ord[u]; ord[u] = tmp;
+            }
+        }
         for (int step = 0; step < p1; step++) {
-            int j = perm ? (int) (UNIF(rng) * p1) : step;
-            if (j >= p1) j = p1 - 1;
+            int j = perm ? ord[step] : step;
 
             /* reject moves that would empty the model or exceed the size cap */
             int pnsel = nsel + (inc[j] ? -1 : 1);
