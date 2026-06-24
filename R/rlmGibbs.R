@@ -38,6 +38,10 @@
 #   cor.check optional correlation threshold; NULL (default) skips the
 #            check.  A scalar such as 0.9999 stops if any pair of predictors has
 #            absolute correlation above it.
+#   start    the initial model for the Gibbs chain(s): "null" (default) starts
+#            empty (intercept only) and grows, avoiding the ill-conditioned
+#            full-model start where the criterion (notably AICc) can be
+#            degenerate; "full" starts from the saturated model.
 #
 # Value: an object of class "IBGS" summarising the search, with
 #   components marginal.prob (the marginal inclusion probability of each
@@ -54,9 +58,11 @@ rlmGibbs <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
                      threshold = 0.9, n.draws = 1000, inv.temp = 1,
                      ebic.gamma = 0.5,
                      criterion = c("AIC", "BIC", "AICc", "exBIC"),
-                     cor.check = NULL){
+                     cor.check = NULL, start = c("null", "full")){
   criterion <- match.arg(criterion)
+  start     <- match.arg(start)
   info.code <- match(criterion, c("AIC", "BIC", "AICc", "exBIC")) - 1L
+  start.code <- match(start, c("null", "full")) - 1L   # 0 = null, 1 = full
 
   x <- as.matrix(x)
   p <- ncol(x)
@@ -71,7 +77,7 @@ rlmGibbs <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
 
   out <- .Call("rlm_gibbs_glm",
                wh$ystar, wh$xstar, wh$istar,
-               max.size, permute, n.draws, inv.temp, ebic.gamma, info.code,
+               max.size, permute, start.code, n.draws, inv.temp, ebic.gamma, info.code,
                wh$logdetV0, n.models,
                PACKAGE = "IBGS")
 

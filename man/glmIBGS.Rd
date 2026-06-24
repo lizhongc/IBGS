@@ -18,7 +18,9 @@ glmIBGS(
   family = c("gaussian", "binomial", "poisson"),
   weights = NULL,
   n.cores = 1L,
-  cor.check = NULL
+  cor.check = NULL,
+  start = c("null", "full"),
+  fast = FALSE
 )
 }
 \arguments{
@@ -40,6 +42,20 @@ glmIBGS(
 \code{TRUE} (default) draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
 \code{FALSE} uses a fixed in-order systematic sweep.}
+
+\item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
+starts from the empty model (intercept only; no covariates for the Cox model)
+and grows, avoiding the ill-conditioned full-model start where the criterion
+(notably AICc) can be degenerate; \code{"full"} starts from the saturated model
+(the previous behaviour).}
+
+\item{fast}{for the binomial/poisson families only, a speed/approximation
+trade-off in the iterative (IRLS) fit. \code{FALSE} (default) fits every
+candidate model to full convergence. \code{TRUE} scores each single-coordinate
+proposal with one warm-started IRLS step and re-fits only the accepted models to
+convergence, so the recorded criteria stay exact but the accept/reject decision
+uses an approximate score; much faster when the iterative fit dominates the run.
+Ignored for the gaussian family (a direct, non-iterative fit).}
 
 \item{n.draws}{the half number of generated samples, default is 250}
 

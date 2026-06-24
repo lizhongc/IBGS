@@ -35,6 +35,10 @@
 #            check.  A scalar such as 0.9999 runs an O(p^2) scan of the predictors
 #            and stops if any pair has absolute correlation above it (naming the
 #            offenders), since near-duplicate columns destabilise the fits.
+#   start    the initial model for the Gibbs chain(s): "null" (default) starts
+#            empty (no covariates; Cox has no intercept) and grows, avoiding the
+#            ill-conditioned full-model start where the criterion (notably AICc)
+#            can be degenerate; "full" starts from the saturated model.
 #
 # Value: an object of class "IBGS" summarising the search, with
 #   components marginal.prob (the marginal inclusion probability of each
@@ -49,9 +53,12 @@ coxIBGS <- function(y, status, x, n.refine = 3, n.models = 10,
                                  permute = TRUE, n.draws = 250, inv.temp = 1,
                                  ebic.gamma = 0.5,
                                  criterion = c("AIC", "BIC", "AICc", "exBIC"),
-                                 weights = NULL, n.cores = 1L, cor.check = NULL){
+                                 weights = NULL, n.cores = 1L, cor.check = NULL,
+                                 start = c("null", "full")){
   criterion <- match.arg(criterion)
+  start     <- match.arg(start)
   info.code <- match(criterion, c("AIC", "BIC", "AICc", "exBIC")) - 1L
+  start.code <- match(start, c("null", "full")) - 1L   # 0 = null, 1 = full
 
   x <- as.matrix(x)
   p <- ncol(x)
@@ -68,7 +75,7 @@ coxIBGS <- function(y, status, x, n.refine = 3, n.models = 10,
   # inside this single C call; see cox_ibgs_search() in src/cox_ibgs.c.
   out <- .Call("cox_ibgs_glm",
                y, status, x, weights,
-               n.refine, block.size, n.keep, threshold, permute, n.draws,
+               n.refine, block.size, n.keep, threshold, permute, start.code, n.draws,
                inv.temp, ebic.gamma, info.code, n.cores, n.models,
                PACKAGE = "IBGS")
 

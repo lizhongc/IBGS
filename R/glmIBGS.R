@@ -35,6 +35,18 @@
 #            check.  A scalar such as 0.9999 runs an O(p^2) scan of the predictors
 #            and stops if any pair has absolute correlation above it (naming the
 #            offenders), since near-duplicate columns destabilise the fits.
+#   start    the initial model for the Gibbs chain(s): "null" (default) starts
+#            empty (intercept only) and grows, avoiding the ill-conditioned
+#            full-model start where the criterion (notably AICc) can be
+#            degenerate; "full" starts from the saturated model.
+#   fast     for the binomial/poisson families only, a speed/approximation
+#            trade-off in the iterative (IRLS) fit.  FALSE (default) fits every
+#            candidate model to full convergence.  TRUE scores each
+#            single-coordinate proposal with a single warm-started IRLS step and
+#            re-fits only the accepted models to convergence, so the recorded
+#            criteria stay exact but the accept/reject decision uses an
+#            approximate score; much faster when the iterative fit dominates.
+#            Ignored for the gaussian family (a direct, non-iterative fit).
 #
 # Value: an object of class "IBGS" summarising the search, with
 #   components marginal.prob (the marginal inclusion probability of each
@@ -49,12 +61,16 @@ glmIBGS <- function(y, x, n.refine = 3, n.models = 10, block.size = 30,
                               n.draws = 250, inv.temp = 1, ebic.gamma = 0.5,
                               criterion = c("AIC", "BIC", "AICc", "exBIC"),
                               family = c("gaussian", "binomial", "poisson"),
-                              weights = NULL, n.cores = 1L, cor.check = NULL){
+                              weights = NULL, n.cores = 1L, cor.check = NULL,
+                              start = c("null", "full"), fast = FALSE){
   criterion <- match.arg(criterion)
   family    <- match.arg(family)
+  start     <- match.arg(start)
+  fast      <- isTRUE(fast)
   # map the string options to the 0-based integer codes the C layer expects
   info.code   <- match(criterion, c("AIC", "BIC", "AICc", "exBIC")) - 1L
   family.code <- match(family, c("gaussian", "binomial", "poisson")) - 1L
+  start.code  <- match(start, c("null", "full")) - 1L   # 0 = null, 1 = full
 
   x <- as.matrix(x)
   p <- ncol(x)
@@ -72,8 +88,9 @@ glmIBGS <- function(y, x, n.refine = 3, n.models = 10, block.size = 30,
   # inside this single C call; see ibgs_search() / ibgs_glm in src/.
   out <- .Call("ibgs_glm",
                y, x, weights,
-               n.refine, block.size, n.keep, threshold, permute, n.draws,
-               inv.temp, ebic.gamma, info.code, family.code, n.cores, n.models,
+               n.refine, block.size, n.keep, threshold, permute, fast, start.code,
+               n.draws, inv.temp, ebic.gamma, info.code, family.code, n.cores,
+               n.models,
                PACKAGE = "IBGS")
 
   # the C call already returns the model-averaging summary (coef / model.ic /

@@ -13,12 +13,20 @@
 
 #include <R.h>
 #include <Rmath.h>
+#define USE_FC_LEN_T
+#include <R_ext/BLAS.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+
+/* FCONE passes the hidden Fortran string-length arguments to the BLAS character
+ * flags (no-op on toolchains without USE_FC_LEN_T). */
+#ifndef FCONE
+# define FCONE
+#endif
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -119,38 +127,6 @@ int cholsolv(double *A, const double *b, double *x, int q)
 }
 
 /*
- * Weighted deviance for the current means (cheap; used as the convergence
- * monitor inside the IRLS loop).
- *
- * The deviance is 2*(logLik_saturated - logLik(mu)); the saturated terms cancel
- * the data-only constants, leaving an expression in y and mu only, which is why
- * it is cheaper to track than the full log-likelihood every iteration:
- *   binomial: 2 sum_i w_i [ y log(y/mu) + (1-y) log((1-y)/(1-mu)) ]
- *   poisson : 2 sum_i w_i [ y log(y/mu) - (y - mu) ]
- * The `if (y>0)` / `if (y<1)` guards implement the limit x log x -> 0 as x -> 0,
- * so the boundary cases y=0 and y=1 contribute no NaN.
- */
-static double glmdev(int family, const double *y, const double *mu, const double *pw, int n)
-{
-    double dev = 0.0;
-    int i;
-    if (family == FAM_BINOMIAL) {
-        for (i = 0; i < n; i++) {
-            double t = 0.0;
-            if (y[i] > 0.0)       t += y[i] * log(y[i] / mu[i]);
-            if (y[i] < 1.0)       t += (1.0 - y[i]) * log((1.0 - y[i]) / (1.0 - mu[i]));
-            dev += pw[i] * t;
-        }
-    } else { /* poisson */
-        for (i = 0; i < n; i++) {
-            double t = (y[i] > 0.0 ? y[i] * log(y[i] / mu[i]) : 0.0) - (y[i] - mu[i]);
-            dev += pw[i] * t;
-        }
-    }
-    return 2.0 * dev;
-}
-
-/*
  * The MODEL-DEPENDENT part of -2*logLik for the converged means.  The full
  * -2*logLik that matches R's glm() aic component (so AIC = -2logLik + 2*npar
  * reproduces R's AIC()) splits into
@@ -219,23 +195,29 @@ static double glmllconst(int family, const double *y, const double *pw, int n)
     return -2.0 * c;
 }
 
-int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, double *wq, double *wn, double *dev2, const double *b0, double *bout)
+int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, int maxit, double *wq, double *wn, double *Dpack, double *Dw, double *dev2, const double *b0, double *bout)
 {
-    double *XtWX = wq;            /* q x q */
-    double *XtWz = wq + q * q;    /* q     */
-    double *beta = wq + q * q + q;/* q     */
+    double *XtWX    = wq;                  /* q x q */
+    double *XtWz    = wq + q * q;          /* q     */
+    double *beta    = wq + q * q + q;      /* q     */
+    double *betaold = wq + q * q + 2 * q;  /* q  (previous iterate, convergence) */
     double *eta = wn;             /* n */
     double *mu  = wn + n;         /* n */
     double *w   = wn + 2 * n;     /* n */
     double *z   = wn + 3 * n;     /* n */
+    double *u   = wn + 4 * n;     /* n  (u = w*z, the syrk/gemv working response) */
 
-    int i, a, b, it;
+    int i, a, it;
+    const double d_one = 1.0, d_zero = 0.0;
 
-    /* The model design is not materialised: column a of the q-column model is
-     * column active[a] of the shared block design Dfull = [1|X] (column 0 is the
-     * intercept).  Indexing avoids copying out a compact design on every fit --
-     * the same Dfull is reused for every candidate model. */
-    #define DCOL(a) (Dfull + (size_t) active[a] * n)
+    /* Gather the q active columns of the shared block design Dfull = [1|X] into a
+     * contiguous n x q scratch ONCE per fit (column 0 = active[0] = intercept).
+     * The IRLS iterations then stream over this packed, cache-friendly buffer
+     * instead of the strided, active[]-indirected columns of Dfull, and it is the
+     * matrix the BLAS kernels below operate on. */
+    for (a = 0; a < q; a++)
+        memcpy(Dpack + (size_t) a * n, Dfull + (size_t) active[a] * n,
+               (size_t) n * sizeof(double));
 
     /* Initial linear predictor.
      *   warm start (b0 != NULL): eta = D b0 starts IRLS from a nearby model's
@@ -246,7 +228,7 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
     if (b0 != NULL) {
         for (i = 0; i < n; i++) eta[i] = 0.0;
         for (a = 0; a < q; a++) {
-            const double *Da = DCOL(a); double ba = b0[a];
+            const double *Da = Dpack + (size_t) a * n; double ba = b0[a];
             for (i = 0; i < n; i++) eta[i] += Da[i] * ba;
         }
     } else {
@@ -260,8 +242,7 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
         }
     }
 
-    double devold = 0.0;
-    for (it = 0; it < IRLS_MAXIT; it++) {
+    for (it = 0; it < maxit; it++) {
         /* Step 1+2: from the current eta compute, per observation, the mean mu,
          * the link derivative mueta = dmu/deta, the variance function var =
          * V(mu), the IRLS weight w = pw * mueta^2 / var, and the working
@@ -288,29 +269,25 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
             z[i]  = eta[i] + (y[i] - m) / mueta;
         }
 
-        /* Convergence test on the deviance: stop once it stops changing
-         * (relative tolerance, with a small absolute floor so a near-zero
-         * deviance still terminates).  Skipped on it==0 (no previous value). */
-        double dev = glmdev(family, y, mu, pw, n);
-        if (it > 0 && fabs(dev - devold) < IRLS_TOL * (fabs(dev) + 0.1))
-            break;
-        devold = dev;
-
-        /* Step 3: assemble the weighted normal equations of the WLS update,
-         * XtWX = D'WD (q x q, symmetric -- only fill b>=a then mirror) and
-         * XtWz = D'Wz (q), accumulating over the n observations. */
-        for (a = 0; a < q; a++) {
-            const double *Da = DCOL(a);
-            double sz = 0.0;
-            for (i = 0; i < n; i++) sz += Da[i] * w[i] * z[i];
-            XtWz[a] = sz;
-            for (b = a; b < q; b++) {
-                const double *Db = DCOL(b);
-                double s = 0.0;
-                for (i = 0; i < n; i++) s += Da[i] * w[i] * Db[i];
-                XtWX[a * q + b] = s;
-                XtWX[b * q + a] = s;
-            }
+        /* Step 3: assemble the weighted normal equations of the WLS update with
+         * BLAS on the packed design.  With Dw = sqrt(w) .* Dpack and u = w .* z,
+         *   XtWX = D'WD = Dw'Dw   -> dsyrk (a rank-n symmetric update), and
+         *   XtWz = D'Wz = Dpack'u -> dgemv.
+         * dsyrk(UPLO='U', TRANS='T') fills the col-major upper triangle of XtWX,
+         * which is byte-for-byte the row-major lower triangle cholsolv() reads,
+         * so no separate symmetrise step is needed. */
+        for (i = 0; i < n; i++) {
+            double sw = sqrt(w[i]);
+            u[i] = w[i] * z[i];
+            for (a = 0; a < q; a++)
+                Dw[(size_t) a * n + i] = sw * Dpack[(size_t) a * n + i];
+        }
+        F77_CALL(dsyrk)("U", "T", &q, &n, &d_one, Dw, &n, &d_zero, XtWX, &q
+                        FCONE FCONE);
+        {
+            int inc1 = 1;
+            F77_CALL(dgemv)("T", &n, &q, &d_one, Dpack, &n, u, &inc1, &d_zero,
+                            XtWz, &inc1 FCONE);
         }
 
         /* solve D'WD beta = D'Wz; a singular system means a collinear model */
@@ -318,9 +295,25 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
 
         for (i = 0; i < n; i++) eta[i] = 0.0;             /* eta = D beta */
         for (a = 0; a < q; a++) {
-            const double *Da = DCOL(a); double ba = beta[a];
+            const double *Da = Dpack + (size_t) a * n; double ba = beta[a];
             for (i = 0; i < n; i++) eta[i] += Da[i] * ba;
         }
+
+        /* Convergence test on the coefficient update: stop once the relative
+         * change in beta falls below tolerance (small absolute floor for the
+         * near-zero case).  This replaces the per-iteration deviance recompute,
+         * removing an O(n) log pass each iteration.  Skipped on it==0 (no
+         * previous beta); never reached when maxit==1 (the one-step fast
+         * proposal). */
+        if (it > 0) {
+            double num = 0.0, den = 0.0;
+            for (a = 0; a < q; a++) {
+                double d = beta[a] - betaold[a];
+                num += d * d; den += beta[a] * beta[a];
+            }
+            if (sqrt(num) < IRLS_TOL * (sqrt(den) + 1e-8)) break;
+        }
+        for (a = 0; a < q; a++) betaold[a] = beta[a];
     }
 
     /* Recompute the converged means from the final eta (the loop may have exited
@@ -342,7 +335,6 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
     }
     *dev2 = glmm2ll(family, y, mu, pw, n);
     if (bout) for (a = 0; a < q; a++) bout[a] = beta[a];
-    #undef DCOL
     return 0;
 }
 
@@ -480,15 +472,17 @@ typedef struct {
     /* gaussian */
     const double *G, *Gy; double yty, sumlogw; double *Sbuf, *bbuf;
     /* glm (binomial/poisson) */
-    const double *y, *X, *pw; double *D, *wq, *wn;
+    const double *y, *X, *pw; double *D, *wq, *wn, *Dpack, *Dw;
     double *bfull, *b0, *bprop;   /* warm-start coefficients */
     double m2ll_const;            /* data-only -2logLik constant, precomputed once */
 } fitctx;
 
 /* Information criterion of the model with the given active column set.
  * active[0] = 0 (intercept); active[r] = (X-column index)+1 for r >= 1.
- * q = number of coefficients.  Sets *ok = 0 if the fit failed. */
-static double modelic(fitctx *c, const int *active, int q, int *ok)
+ * q = number of coefficients.  maxit caps the IRLS iterations of the glm fit
+ * (IRLS_MAXIT for a full fit, 1 for the one-step fast proposal; ignored on the
+ * gaussian path, which has no iteration).  Sets *ok = 0 if the fit failed. */
+static double modelic(fitctx *c, const int *active, int q, int maxit, int *ok)
 {
     if (c->family == FAM_GAUSSIAN) {
         double rss = rsschol(c->G, c->Gy, c->ptot1, active, q, c->yty,
@@ -510,8 +504,8 @@ static double modelic(fitctx *c, const int *active, int q, int *ok)
          * (built once as [1 | X]) -- no per-fit design rebuild. */
         for (int r = 0; r < q; r++) c->b0[r] = c->bfull[active[r]];
         double dev2;
-        if (glmirls(c->family, c->y, c->pw, c->D, active, c->n, q,
-                    c->wq, c->wn, &dev2, c->b0, c->bprop)) {
+        if (glmirls(c->family, c->y, c->pw, c->D, active, c->n, q, maxit,
+                    c->wq, c->wn, c->Dpack, c->Dw, &dev2, c->b0, c->bprop)) {
             *ok = 0; return 0.0;
         }
         *ok = 1;
@@ -543,6 +537,7 @@ int gbwsallc(gbwst *ws, int capt, int n, int family)
 
     ws->G = NULL; ws->Gy = NULL; ws->Sbuf = NULL; ws->bbuf = NULL;
     ws->D = NULL; ws->wq = NULL; ws->wn = NULL;
+    ws->Dpack = NULL; ws->Dw = NULL;
     ws->bfull = NULL; ws->b0 = NULL; ws->bprop = NULL;
 
     if (family == FAM_GAUSSIAN) {
@@ -552,8 +547,10 @@ int gbwsallc(gbwst *ws, int capt, int n, int family)
         ws->bbuf = R_Calloc((size_t) capt, double);
     } else {
         ws->D     = R_Calloc((size_t) n * capt, double);
-        ws->wq    = R_Calloc((size_t) capt * capt + 2 * capt, double);
-        ws->wn    = R_Calloc((size_t) 4 * n, double);
+        ws->wq    = R_Calloc((size_t) capt * capt + 3 * capt, double);
+        ws->wn    = R_Calloc((size_t) 5 * n, double);
+        ws->Dpack = R_Calloc((size_t) n * capt, double);
+        ws->Dw    = R_Calloc((size_t) n * capt, double);
         ws->bfull = R_Calloc((size_t) capt, double);
         ws->b0    = R_Calloc((size_t) capt, double);
         ws->bprop = R_Calloc((size_t) capt, double);
@@ -579,16 +576,28 @@ void gbwsfree(gbwst *ws)
     R_Free(ws->D);
     R_Free(ws->wq);
     R_Free(ws->wn);
+    R_Free(ws->Dpack);
+    R_Free(ws->Dw);
     R_Free(ws->bfull);
     R_Free(ws->b0);
     R_Free(ws->bprop);
 }
 
-int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, int family, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, gbwst *wsi)
+int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int fast, int len, double k, double gamma, int p0, int info, int family, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, gbwst *wsi)
 {
     int ptot  = p1 + p2;
     int ptot1 = ptot + 1;
     int a, b, i;
+
+    /* fast (glm only): score each single-coordinate proposal with ONE warm-
+     * started IRLS step (prop_maxit = 1) -- the warm start is one column from the
+     * current fit, so a single Newton step is an accurate proposal score -- and
+     * re-fit the accepted model to full convergence before committing, so the
+     * recorded ICs and warm-start coefficients stay exact and only the accept/
+     * reject decision uses the cheap approximate score.  fast == 0 (the default,
+     * and the only mode for gaussian, which has no IRLS) fits every proposal to
+     * full convergence. */
+    int prop_maxit = (fast && family != FAM_GAUSSIAN) ? 1 : IRLS_MAXIT;
 
     /* Use the caller's workspace, or allocate a private one (main thread only)
      * when wsi is NULL.  Pointing the original locals at the workspace fields
@@ -606,12 +615,14 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
     int    *ord    = ws->ord;
     double *G = ws->G, *Gy = ws->Gy, *Sbuf = ws->Sbuf, *bbuf = ws->bbuf;
     double *D = ws->D, *wq = ws->wq, *wn = ws->wn;
+    double *Dpack = ws->Dpack, *Dw = ws->Dw;
     double *bfull = ws->bfull, *b0 = ws->b0, *bprop = ws->bprop;
 
     fitctx c;
     c.family = family; c.info = info; c.p0 = p0; c.n = n; c.ptot1 = ptot1;
     c.gamma = gamma; c.y = y; c.X = X; c.pw = pw;
     c.G = c.Gy = NULL; c.Sbuf = c.bbuf = NULL; c.D = c.wq = c.wn = NULL;
+    c.Dpack = c.Dw = NULL;
     c.bfull = c.b0 = c.bprop = NULL;
     c.yty = 0.0; c.sumlogw = 0.0; c.m2ll_const = 0.0;
 
@@ -664,7 +675,7 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
         for (i = 0; i < n; i++) D[i] = 1.0;
         for (a = 0; a < ptot; a++)
             memcpy(D + (size_t) (a + 1) * n, X + (size_t) a * n, (size_t) n * sizeof(double));
-        c.D = D; c.wq = wq; c.wn = wn;
+        c.D = D; c.wq = wq; c.wn = wn; c.Dpack = Dpack; c.Dw = Dw;
         c.bfull = bfull; c.b0 = b0; c.bprop = bprop;
         /* data-only -2logLik normalising constant: same for every candidate
          * model, so compute it once here (cf. sumlogw on the gaussian path)
@@ -709,7 +720,7 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
      * first improving proposal is certain to be accepted. */
     int q, ok;
     BUILD_ACTIVE(q);
-    double curic = modelic(&c, active, q, &ok);
+    double curic = modelic(&c, active, q, IRLS_MAXIT, &ok);   /* full fit */
     if (!ok) curic = R_PosInf; else COMMIT_BETA(q);
 
     if (ofrq)
@@ -742,7 +753,7 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
             inc[j] ^= 1;                       /* tentatively flip coordinate j */
             int pq;
             BUILD_ACTIVE(pq);
-            double propic = modelic(&c, active, pq, &ok);
+            double propic = modelic(&c, active, pq, prop_maxit, &ok);
 
             /* Metropolis acceptance A = min(1, exp{k*(IC_cur - IC_prop)}):
              * always accept an improvement (IC_prop < IC_cur => A>=1), accept a
@@ -753,6 +764,17 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
                 if (A > 1.0) A = 1.0;
                 if (UNIF(rng) < A) accept = 1;
                 if (accept) {
+                    /* fast mode: the proposal was scored with a single IRLS step,
+                     * so re-fit the accepted model to full convergence -- this
+                     * refreshes bprop (the next warm start) and the recorded IC
+                     * to their exact values.  Falls back to the one-step score if
+                     * the full re-fit turns singular (bprop then keeps the
+                     * one-step coefficients). */
+                    if (prop_maxit != IRLS_MAXIT) {
+                        int ok2;
+                        double exic = modelic(&c, active, pq, IRLS_MAXIT, &ok2);
+                        if (ok2) propic = exic;
+                    }
                     curic = propic;
                     nsel   = pnsel;
                     COMMIT_BETA(pq);
@@ -905,7 +927,7 @@ void srwsfree(srwst *ws)
  * included.  Writes the marginal inclusion probability of every S1 column into
  * vfreq[] at its original column position.  Returns 0 on success, 1 on failure.
  */
-static int scrblks(const double *y, const double *X, const double *pw, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int len, double k, double gamma, int p0, int info, int family, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
+static int scrblks(const double *y, const double *X, const double *pw, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int fast, int start_full, int len, double k, double gamma, int p0, int info, int family, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
 {
     /* group the S1 positions by block: pos[off[b] .. off[b]+sz[b]-1] */
     int *sz  = R_Calloc((size_t) (h > 0 ? h : 1), int);
@@ -960,11 +982,11 @@ static int scrblks(const double *y, const double *X, const double *pw, int n, co
         double *Xb    = ws->Xb;
 
         /* this block's design = [its pb S1 columns (toggleable) | the nS2 fixed
-         * S2 columns]; s0 = 1 starts every toggleable column included.  Gather
-         * the columns into the workspace's reusable buffer. */
+         * S2 columns]; the toggleable columns start all-in (start_full) or empty
+         * (null start).  Gather the columns into the workspace's reusable buffer. */
         for (int c = 0; c < pb; c++) {
             bcols[c] = S1[pos[off[b] + c]];
-            s0[c]    = 1;
+            s0[c]    = start_full ? 1 : 0;
         }
         for (int c = 0; c < nS2; c++) bcols[pb + c] = S2[c];
         for (int c = 0; c < pb + nS2; c++)
@@ -974,7 +996,7 @@ static int scrblks(const double *y, const double *X, const double *pw, int n, co
          * within-block sampler reports only the inclusion frequencies `fr` */
         rngt rng;
         rngseed(&rng, seeds[b]);
-        int rc = rungibbs(y, Xb, pw, n, pb, nS2, s0, perm, len, k, gamma,
+        int rc = rungibbs(y, Xb, pw, n, pb, nS2, s0, perm, fast, len, k, gamma,
                           p0, info, family, pb + nS2, &rng, NULL, fr, NULL, ws);
         if (rc) {
 #ifdef _OPENMP
@@ -1033,26 +1055,27 @@ static void drwblks(int nS1, int h, int *assign, uint64_t *seeds)
 /* Public entry points.                                               */
 /* ------------------------------------------------------------------ */
 
-int gibbssam(const double *y, const double *X, const double *pw, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, int family, int *mbuf, double *sicbuf, double *vpbuf)
+int gibbssam(const double *y, const double *X, const double *pw, int n, int p, int nvars, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int *mbuf, double *sicbuf, double *vpbuf)
 {
     if (nvars < 1) nvars = 1;
     if (nvars > p) nvars = p;
 
-    /* standalone sampler: all p predictors are toggleable (p2 = 0), the model
-     * is initialised to the first nvars columns, and the size is capped at
-     * nvars.  rng = NULL means it uses R's RNG on the main thread (serial). */
+    /* standalone sampler: all p predictors are toggleable (p2 = 0) and the size
+     * is capped at nvars.  The start model is either the first nvars columns
+     * (start_full) or empty (null start, intercept only).  rng = NULL means it
+     * uses R's RNG on the main thread (serial). */
     int *s0 = (int *) malloc((size_t) p * sizeof(int));
     if (!s0) return 1;
-    for (int i = 0; i < p; i++) s0[i] = (i < nvars) ? 1 : 0;   /* first nvars in */
+    for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
-    int fail = rungibbs(y, X, pw, n, p, 0, s0, perm, len, k, gamma, p, info,
+    int fail = rungibbs(y, X, pw, n, p, 0, s0, perm, fast, len, k, gamma, p, info,
                         family, nvars, /*rng=*/NULL, mbuf, vpbuf, sicbuf,
                         /*ws=*/NULL);
     free(s0);
     return fail;
 }
 
-int ibgssel(const double *y, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, int family, int nthr, int *xsout, int *psout, int *lfout)
+int ibgssel(const double *y, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int nthr, int *xsout, int *psout, int *lfout)
 {
     int p0 = p;
 
@@ -1084,7 +1107,7 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
         int h = nblks(nS1, H, n, nS2);
         drwblks(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, len, k,
+        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, fast, start_full, len, k,
                        gamma, p0, info, family, nthr, assign, ws.seeds, vfreq);
         if (fail) break;
 
@@ -1110,8 +1133,8 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
         int    *s0 = ws.s0;
         double *fr = ws.fr;
         gathcols(X, n, xs, ps, Xs);
-        for (int i = 0; i < ps; i++) s0[i] = 1;
-        fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, len, k, gamma, p0,
+        for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
+        fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, fast, len, k, gamma, p0,
                         info, family, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
 
@@ -1146,7 +1169,7 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
         int h = nblks(nS1, H, n, nS2);
         drwblks(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, len,
+        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, fast, start_full, len,
                        k, gamma, p0, info, family, nthr, assign, ws.seeds,
                        vfreq);
 
@@ -1186,15 +1209,15 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
  *   sel   : OUTPUT int[ps] 1-based original indices of the candidate columns.
  * Allocates its gather/run scratch with R_Calloc/R_Free (main thread); returns 0
  * on success, 1 on a numerical failure. */
-int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, int family, int *omat, double *oic, double *vprob, int *sel)
+int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, int fast, int start_full, double k, double gamma, int info, int family, int *omat, double *oic, double *vprob, int *sel)
 {
     double *Xs = R_Calloc((size_t) n * ps, double);
     int    *s0 = R_Calloc((size_t) ps, int);
     double *fr = R_Calloc((size_t) ps, double);
 
     gathcols(X, n, xs, ps, Xs);
-    for (int i = 0; i < ps; i++) s0[i] = 1;
-    int fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, lenf, k, gamma, p, info, family, ps, NULL, omat, fr, oic, NULL);
+    for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
+    int fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, fast, lenf, k, gamma, p, info, family, ps, NULL, omat, fr, oic, NULL);
 
     if (!fail) {
         /* marginal probs over all p columns: zero, then scatter the ps selected
@@ -1250,12 +1273,16 @@ void glmcoef(const double *y, const double *X, const double *pw, int n, int q, i
         R_Free(G);
         R_Free(Gy);
     } else {
-        double *wq = R_Calloc((size_t) p1 * p1 + 2 * p1, double);
-        double *wn = R_Calloc((size_t) 4 * n, double);
+        double *wq    = R_Calloc((size_t) p1 * p1 + 3 * p1, double);
+        double *wn    = R_Calloc((size_t) 5 * n, double);
+        double *Dpack = R_Calloc((size_t) n * p1, double);
+        double *Dw    = R_Calloc((size_t) n * p1, double);
         double dev2;
-        if (glmirls(family, y, pw, D, active, n, p1, wq, wn, &dev2, NULL, bout)) for (int a = 0; a < p1; a++) bout[a] = 0.0;
+        if (glmirls(family, y, pw, D, active, n, p1, IRLS_MAXIT, wq, wn, Dpack, Dw, &dev2, NULL, bout)) for (int a = 0; a < p1; a++) bout[a] = 0.0;
         R_Free(wq);
         R_Free(wn);
+        R_Free(Dpack);
+        R_Free(Dw);
     }
 
     /* a rank-deficient refit can slip past the pivot guard and yield non-finite

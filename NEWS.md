@@ -1,7 +1,37 @@
 # IBGS 1.0.1
 
+## New features
+
+* All six samplers (`glmGibbs`/`glmIBGS`, `coxGibbs`/`coxIBGS`,
+  `rlmGibbs`/`rlmIBGS`) gain a `start = c("null", "full")` argument controlling
+  the initial model of the Gibbs chain(s). The new default `"null"` starts from
+  the empty model (intercept only; no covariates for the Cox model) and grows,
+  avoiding the ill-conditioned full-model start where an information criterion —
+  notably AICc, whose correction has denominator `n - npar - 1` — becomes
+  degenerate as the model size approaches `n`. `start = "full"` restores the
+  previous saturated start. **This changes the default behaviour:** results for a
+  given seed differ from earlier versions unless `start = "full"` is set.
+
+* `glmGibbs()`/`glmIBGS()` gain an opt-in `fast = FALSE` argument for the
+  binomial/poisson families. With `fast = TRUE` each single-coordinate Gibbs
+  proposal is scored with a single warm-started IRLS step (the warm start is one
+  column from the current fit, so one Newton step is an accurate proposal score),
+  and only the *accepted* models are re-fitted to full convergence. The recorded
+  information criteria and coefficients therefore stay exact; only the
+  accept/reject decision uses the cheap approximate score. The speedup grows with
+  how much the iterative fit dominates the run (roughly 2x in fit-heavy regimes;
+  little when the visited models are tiny). The gaussian family ignores it (its
+  fit is direct and non-iterative).
+
 ## Performance
 
+* The binomial/poisson IRLS fit (`glmirls`) now gathers the active columns into a
+  contiguous design once per fit and assembles the weighted normal equations
+  `D'WD`/`D'Wz` with the BLAS (`dsyrk`/`dgemv`) instead of hand-written strided
+  loops, and tests convergence on the coefficient update rather than recomputing
+  the deviance each iteration. The fitted values and information criteria still
+  match R's `glm()`/`AIC()` (to its own tolerance); the gain on the per-fit
+  linear algebra grows with the model size and sample size.
 * The data-only normalising constant of the binomial/poisson `-2logLik` (the
   binomial coefficient `lgamma` terms / poisson `log(y!)`) is now computed once
   per run instead of on every candidate fit. It is the same for every model, so

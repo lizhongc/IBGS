@@ -34,6 +34,22 @@ test_that("permute = TRUE (random permutation) and FALSE both recover the signal
   expect_equal(a$marginal.prob, b$marginal.prob)
 })
 
+test_that("start = null (default) and full both recover the signal", {
+  expect_equal(eval(formals(glmGibbs)$start)[1], "null")   # default is null
+  set.seed(2)
+  d  <- sim_gauss(n = 100, p = 20)
+  sn <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, start = "null")
+  sf <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, start = "full")
+  expect_recovers(sn, d$truth)
+  expect_recovers(sf, d$truth)
+  # the two starts give different chains (the switch is live)
+  expect_false(isTRUE(all.equal(sn$ic.trace, sf$ic.trace)))
+  # null start works for the IBGS path too
+  fi <- glmIBGS(d$y, d$x, criterion = "BIC", n.refine = 2, n.draws = 120,
+                start = "null")
+  expect_recovers(fi, d$truth)
+})
+
 test_that("binomial and poisson families run via both samplers", {
   set.seed(3)
   db <- sim_binom()

@@ -31,6 +31,10 @@
 #            check.  A scalar such as 0.9999 runs an O(p^2) scan of the predictors
 #            and stops if any pair has absolute correlation above it (naming the
 #            offenders), since near-duplicate columns destabilise the fits.
+#   start    the initial model for the Gibbs chain(s): "null" (default) starts
+#            empty (no covariates; Cox has no intercept) and grows, avoiding the
+#            ill-conditioned full-model start where the criterion (notably AICc)
+#            can be degenerate; "full" starts from the saturated model.
 #
 # Value: an object of class "IBGS" summarising the search, with
 #   components marginal.prob (the marginal inclusion probability of each
@@ -44,9 +48,12 @@ coxGibbs <- function(y, status, x, max.size = ncol(x), permute = TRUE,
                             n.models = 10, threshold = 0.9, n.draws = 1000,
                             inv.temp = 1, ebic.gamma = 0.5,
                             criterion = c("AIC", "BIC", "AICc", "exBIC"),
-                            weights = NULL, cor.check = NULL){
+                            weights = NULL, cor.check = NULL,
+                            start = c("null", "full")){
   criterion <- match.arg(criterion)
+  start     <- match.arg(start)
   info.code <- match(criterion, c("AIC", "BIC", "AICc", "exBIC")) - 1L
+  start.code <- match(start, c("null", "full")) - 1L   # 0 = null, 1 = full
 
   x <- as.matrix(x)
   p <- ncol(x)
@@ -61,7 +68,7 @@ coxGibbs <- function(y, status, x, max.size = ncol(x), permute = TRUE,
 
   # single, serial (non-block) Metropolis-within-Gibbs run over all p predictors
   out <- .Call("cox_gibbs_glm",
-               y, status, x, weights, max.size, permute, n.draws, inv.temp,
+               y, status, x, weights, max.size, permute, start.code, n.draws, inv.temp,
                ebic.gamma, info.code, n.models,
                PACKAGE = "IBGS")
 

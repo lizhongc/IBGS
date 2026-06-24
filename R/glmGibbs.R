@@ -33,6 +33,18 @@
 #            check.  A scalar such as 0.9999 runs an O(p^2) scan of the predictors
 #            and stops if any pair has absolute correlation above it (naming the
 #            offenders), since near-duplicate columns destabilise the fits.
+#   start    the initial model for the Gibbs chain(s): "null" (default) starts
+#            empty (intercept only) and grows, avoiding the ill-conditioned
+#            full-model start where the criterion (notably AICc) can be
+#            degenerate; "full" starts from the saturated model.
+#   fast     for the binomial/poisson families only, a speed/approximation
+#            trade-off in the iterative (IRLS) fit.  FALSE (default) fits every
+#            candidate model to full convergence.  TRUE scores each
+#            single-coordinate proposal with a single warm-started IRLS step and
+#            re-fits only the accepted models to convergence, so the recorded
+#            criteria stay exact but the accept/reject decision uses an
+#            approximate score; much faster when the iterative fit dominates.
+#            Ignored for the gaussian family (a direct, non-iterative fit).
 #
 # Value: an object of class "IBGS" summarising the search, with
 #   components marginal.prob (the marginal inclusion probability of each
@@ -47,12 +59,16 @@ glmGibbs <- function(y, x, max.size = ncol(x), permute = TRUE, n.models = 10,
                          ebic.gamma = 0.5,
                          criterion = c("AIC", "BIC", "AICc", "exBIC"),
                          family = c("gaussian", "binomial", "poisson"),
-                         weights = NULL, cor.check = NULL){
+                         weights = NULL, cor.check = NULL,
+                         start = c("null", "full"), fast = FALSE){
   criterion <- match.arg(criterion)
   family    <- match.arg(family)
+  start     <- match.arg(start)
+  fast      <- isTRUE(fast)
   # 0-based integer codes for the C layer
   info.code   <- match(criterion, c("AIC", "BIC", "AICc", "exBIC")) - 1L
   family.code <- match(family, c("gaussian", "binomial", "poisson")) - 1L
+  start.code  <- match(start, c("null", "full")) - 1L   # 0 = null, 1 = full
 
   x <- as.matrix(x)
   p <- ncol(x)
@@ -66,8 +82,8 @@ glmGibbs <- function(y, x, max.size = ncol(x), permute = TRUE, n.models = 10,
 
   # single, serial (non-block) Metropolis-within-Gibbs run over all p predictors
   out <- .Call("gibbs_sampler_glm",
-               y, x, weights, max.size, permute, n.draws, inv.temp,
-               ebic.gamma, info.code, family.code, n.models,
+               y, x, weights, max.size, permute, fast, start.code, n.draws,
+               inv.temp, ebic.gamma, info.code, family.code, n.models,
                PACKAGE = "IBGS")
 
   result <- .ibgs.object(out, inv.temp, criterion, family, TRUE)

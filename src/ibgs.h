@@ -85,11 +85,17 @@ double icval(double m2ll, int npar, int npred, int n, int info, double gamma, in
  * fit (and *dev2) is unchanged.  If bout != NULL (length q) the fitted
  * coefficients are written there.
  *
+ * maxit caps the IRLS iterations: pass IRLS_MAXIT for a full fit, or 1 for a
+ * single warm-started Newton step (the approximate proposal score used by the
+ * opt-in fast mode; only meaningful with a warm start b0 close to the optimum).
+ *
  * Scratch buffers supplied by the caller (reused across fits):
- *   wq : at least q*q + 2*q  doubles
- *   wn : at least 4*n        doubles
+ *   wq    : at least q*q + 3*q  doubles  (XtWX, XtWz, beta, betaold)
+ *   wn    : at least 5*n        doubles  (eta, mu, w, z, u)
+ *   Dpack : at least n*q        doubles  (active columns gathered contiguously)
+ *   Dw    : at least n*q        doubles  (sqrt(w)-scaled design for the BLAS syrk)
  */
-int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, double *wq, double *wn, double *dev2, const double *b0, double *bout);
+int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, int maxit, double *wq, double *wn, double *Dpack, double *Dw, double *dev2, const double *b0, double *bout);
 
 /*
  * Gaussian OLS residual sum of squares of the active columns, via a Cholesky on
@@ -175,6 +181,7 @@ typedef struct {
     int    *ord;         /* per-sweep random visit order (Fisher-Yates)  */
     double *G, *Gy, *Sbuf, *bbuf;                /* gaussian Gram path */
     double *D, *wq, *wn, *bfull, *b0, *bprop;   /* GLM IRLS path      */
+    double *Dpack, *Dw;  /* GLM IRLS: packed active design + sqrt(w)-scaled copy */
     int    *bcols, *s0;  /* screening: gathered column ids / start model  */
     double *fr, *Xb;     /* screening: block freqs / gathered block design */
 } gbwst;
@@ -264,7 +271,7 @@ void rlwsfree(rlwst *ws);
  * info codes:   0 = AIC, 1 = BIC, 2 = AICc, 3 = exBIC.
  * Returns 0 on success, 1 on allocation failure.
  */
-int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, int family, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, gbwst *ws);
+int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int fast, int len, double k, double gamma, int p0, int info, int family, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, gbwst *ws);
 
 /*
  * The Cox Metropolis-within-Gibbs sampler (cox.c).  The Cox parallel of
@@ -433,8 +440,8 @@ void srwsfree(srwst *ws);
  *   sel   : OUTPUT int[ps]               1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int ibgssel(const double *y, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, int family, int nthr, int *xs, int *ps, int *lenf);
-int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, int family, int *omat, double *oic, double *vprob, int *sel);
+int ibgssel(const double *y, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int nthr, int *xs, int *ps, int *lenf);
+int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, int fast, int start_full, double k, double gamma, int info, int family, int *omat, double *oic, double *vprob, int *sel);
 
 /*
  * Standalone (non-block) restricted Gibbs sampler over all p predictors, model
@@ -445,7 +452,7 @@ int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, co
  *   vpbuf  : double[p]
  * Returns 0 on success, 1 on failure.
  */
-int gibbssam(const double *y, const double *X, const double *pw, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, int family, int *mbuf, double *sicbuf, double *vpbuf);
+int gibbssam(const double *y, const double *X, const double *pw, int n, int p, int nvars, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int *mbuf, double *sicbuf, double *vpbuf);
 
 /*
  * Single-model GLM coefficient refit behind the glm_coef() .Call wrapper.  Builds
@@ -478,8 +485,8 @@ void glmcoef(const double *y, const double *X, const double *pw, int n, int q, i
  *   sel   : OUTPUT int[ps] 1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int coxibgsel(const double *time, const int *status, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, int nthr, int *xs, int *ps, int *lenf);
-int coxibgrun(const double *time, const int *status, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, int *omat, double *oic, double *vprob, int *sel);
+int coxibgsel(const double *time, const int *status, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, int nthr, int *xs, int *ps, int *lenf);
+int coxibgrun(const double *time, const int *status, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, int *omat, double *oic, double *vprob, int *sel);
 
 /*
  * Standalone (non-block) restricted Cox Gibbs sampler over all p predictors,
@@ -489,7 +496,7 @@ int coxibgrun(const double *time, const int *status, const double *X, const doub
  *   vpbuf  : double[p]
  * Returns 0 on success, 1 on failure.
  */
-int coxgbsam(const double *time, const int *status, const double *X, const double *pw, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, int *mbuf, double *sicbuf, double *vpbuf);
+int coxgbsam(const double *time, const int *status, const double *X, const double *pw, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, int *mbuf, double *sicbuf, double *vpbuf);
 
 /*
  * Single-model Cox coefficient refit behind the cox_coef() .Call wrapper.  Fits
@@ -525,15 +532,15 @@ void coxcoef(const double *time, const int *status, const double *pw, const doub
  *   sel   : OUTPUT int[ps] 1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, double ldv0, int nthr, int *xs, int *ps, int *lenf);
-int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel);
+int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xs, int *ps, int *lenf);
+int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel);
 
 /*
  * Standalone (non-block) rlm sampler over all p whitened predictors, capped at
  * nvars.  Writes into caller-provided buffers (mbuf: int[len*(1+p)],
  * sicbuf: double[len], vpbuf: double[p]).  Returns 0 on success, 1 on failure.
  */
-int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf);
+int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf);
 
 /*
  * Single-model whitened-OLS coefficient refit behind the rlm_coef() .Call

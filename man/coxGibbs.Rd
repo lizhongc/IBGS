@@ -15,7 +15,8 @@ coxGibbs(
   ebic.gamma = 0.5,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   weights = NULL,
-  cor.check = NULL
+  cor.check = NULL,
+  start = c("null", "full")
 )
 }
 \arguments{
@@ -32,6 +33,12 @@ default is \code{ncol(x)}}
 \code{TRUE} (default) draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
 \code{FALSE} uses a fixed in-order systematic sweep.}
+
+\item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
+starts from the empty model (no covariates; the Cox model has no intercept) and
+grows, avoiding the ill-conditioned full-model start where the criterion (notably
+AICc) can be degenerate; \code{"full"} starts from the saturated model (the
+previous behaviour).}
 
 \item{n.models}{the number of top selected models, default is 10}
 

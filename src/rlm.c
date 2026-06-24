@@ -284,7 +284,7 @@ static void rlmdrwbl(int nS1, int h, int *assign, uint64_t *seeds)
  * shared whitened intercept istar.  Writes each S1 column's inclusion frequency
  * into vfreq[].  Returns 0 on success, 1 on failure.
  */
-static int rlmscrbl(const double *ystar, const double *Xstar, const double *istar, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int len, double k, double gamma, int p0, int info, double ldv0, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
+static int rlmscrbl(const double *ystar, const double *Xstar, const double *istar, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int start_full, int len, double k, double gamma, int p0, int info, double ldv0, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
 {
     int *sz  = R_Calloc((size_t) (h > 0 ? h : 1), int);
     int *off = R_Calloc((size_t) (h + 1), int);
@@ -334,7 +334,7 @@ static int rlmscrbl(const double *ystar, const double *Xstar, const double *ista
 
         for (int c = 0; c < pb; c++) {
             bcols[c] = S1[pos[off[b] + c]];
-            s0[c]    = 1;
+            s0[c]    = start_full ? 1 : 0;
         }
         for (int c = 0; c < nS2; c++) bcols[pb + c] = S2[c];
         for (int c = 0; c < pb + nS2; c++)
@@ -369,14 +369,14 @@ static int rlmscrbl(const double *ystar, const double *Xstar, const double *ista
 /* Public entry points.                                               */
 /* ------------------------------------------------------------------ */
 
-int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf)
+int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf)
 {
     if (nvars < 1) nvars = 1;
     if (nvars > p) nvars = p;
 
     int *s0 = (int *) malloc((size_t) p * sizeof(int));
     if (!s0) return 1;
-    for (int i = 0; i < p; i++) s0[i] = (i < nvars) ? 1 : 0;
+    for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
     int fail = runrlmgb(ystar, Xstar, istar, n, p, 0, s0, perm, len, k, gamma,
                         p, info, ldv0, nvars, /*rng=*/NULL, mbuf, vpbuf,
@@ -385,7 +385,7 @@ int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int 
     return fail;
 }
 
-int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, double ldv0, int nthr, int *xsout, int *psout, int *lfout)
+int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xsout, int *psout, int *lfout)
 {
     int p0 = p;
 
@@ -414,7 +414,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
         rlmdrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
         fail = rlmscrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm,
-                        len, k, gamma, p0, info, ldv0, nthr, assign,
+                        start_full, len, k, gamma, p0, info, ldv0, nthr, assign,
                         ws.seeds, vfreq);
         if (fail) break;
 
@@ -436,7 +436,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
         int    *s0 = ws.s0;
         double *fr = ws.fr;
         gathcols(Xstar, n, xs, ps, Xs);
-        for (int i = 0; i < ps; i++) s0[i] = 1;
+        for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
         fail = runrlmgb(ystar, Xs, istar, n, ps, 0, s0, perm, len, k, gamma,
                         p0, info, ldv0, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
@@ -468,7 +468,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
         rlmdrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
         fail = rlmscrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h,
-                        perm, len, k, gamma, p0, info, ldv0, nthr,
+                        perm, start_full, len, k, gamma, p0, info, ldv0, nthr,
                         assign, ws.seeds, vfreq);
 
         if (!fail) {
@@ -508,7 +508,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
  *   sel   : OUTPUT int[ps] 1-based original indices of the candidate columns.
  * Allocates its gather/run scratch with R_Calloc/R_Free (main thread); returns 0
  * on success, 1 on a numerical failure. */
-int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel)
+int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel)
 {
     double *Xs = R_Calloc((size_t) n * ps, double);
     int    *s0 = R_Calloc((size_t) ps, int);

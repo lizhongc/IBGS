@@ -20,7 +20,8 @@ rlmIBGS(
   ebic.gamma = 0.5,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   n.cores = 1L,
-  cor.check = NULL
+  cor.check = NULL,
+  start = c("null", "full")
 )
 }
 \arguments{
@@ -52,6 +53,12 @@ used with \code{Z}}
 \code{TRUE} (default) draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
 \code{FALSE} uses a fixed in-order systematic sweep.}
+
+\item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
+starts from the empty model (intercept only) and grows, avoiding the
+ill-conditioned full-model start where the criterion (notably AICc) can be
+degenerate; \code{"full"} starts from the saturated model (the previous
+behaviour).}
 
 \item{n.draws}{the half number of generated samples, default is 250}
 

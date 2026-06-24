@@ -548,7 +548,7 @@ static void coxdrwbl(int nS1, int h, int *assign, uint64_t *seeds)
  * included.  Writes the marginal inclusion probability of every S1 column into
  * vfreq[] at its original column position.  Returns 0 on success, 1 on failure.
  */
-static int coxscrbl(const double *time, const int *status, const double *X, const double *pw, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int len, double k, double gamma, int p0, int info, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
+static int coxscrbl(const double *time, const int *status, const double *X, const double *pw, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int start_full, int len, double k, double gamma, int p0, int info, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
 {
     int *sz  = R_Calloc((size_t) (h > 0 ? h : 1), int);
     int *off = R_Calloc((size_t) (h + 1), int);
@@ -597,7 +597,7 @@ static int coxscrbl(const double *time, const int *status, const double *X, cons
 
         for (int c = 0; c < pb; c++) {
             bcols[c] = S1[pos[off[b] + c]];
-            s0[c]    = 1;
+            s0[c]    = start_full ? 1 : 0;
         }
         for (int c = 0; c < nS2; c++) bcols[pb + c] = S2[c];
         for (int c = 0; c < pb + nS2; c++)
@@ -632,14 +632,14 @@ static int coxscrbl(const double *time, const int *status, const double *X, cons
 /* Public entry points.                                               */
 /* ------------------------------------------------------------------ */
 
-int coxgbsam(const double *time, const int *status, const double *X, const double *pw, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, int *mbuf, double *sicbuf, double *vpbuf)
+int coxgbsam(const double *time, const int *status, const double *X, const double *pw, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, int *mbuf, double *sicbuf, double *vpbuf)
 {
     if (nvars < 1) nvars = 1;
     if (nvars > p) nvars = p;
 
     int *s0 = (int *) malloc((size_t) p * sizeof(int));
     if (!s0) return 1;
-    for (int i = 0; i < p; i++) s0[i] = (i < nvars) ? 1 : 0;
+    for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
     int fail = runcoxgb(time, status, X, pw, n, p, 0, s0, perm, len, k,
                         gamma, p, info, nvars, /*rng=*/NULL, mbuf, vpbuf,
@@ -648,7 +648,7 @@ int coxgbsam(const double *time, const int *status, const double *X, const doubl
     return fail;
 }
 
-int coxibgsel(const double *time, const int *status, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, int nthr, int *xsout, int *psout, int *lfout)
+int coxibgsel(const double *time, const int *status, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, int nthr, int *xsout, int *psout, int *lfout)
 {
     int p0 = p;
 
@@ -681,7 +681,7 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
         coxdrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
         fail = coxscrbl(time, status, X, pw, n, S1, nS1, S2, nS2, h,
-                        perm, len, k, gamma, p0, info, nthr, assign,
+                        perm, start_full, len, k, gamma, p0, info, nthr, assign,
                         ws.seeds, vfreq);
         if (fail) break;
 
@@ -703,7 +703,7 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
         int    *s0 = ws.s0;
         double *fr = ws.fr;
         gathcols(X, n, xs, ps, Xs);
-        for (int i = 0; i < ps; i++) s0[i] = 1;
+        for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
         fail = runcoxgb(time, status, Xs, pw, n, ps, 0, s0, perm, len, k,
                         gamma, p0, info, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
@@ -735,7 +735,7 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
         coxdrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
         fail = coxscrbl(time, status, X, pw, n, S1, nS1, S2, nS2,
-                        h, perm, len, k, gamma, p0, info, nthr,
+                        h, perm, start_full, len, k, gamma, p0, info, nthr,
                         assign, ws.seeds, vfreq);
 
         if (!fail) {
@@ -773,7 +773,7 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
  *   sel   : OUTPUT int[ps] 1-based original indices of the candidate columns.
  * Allocates its gather/run scratch with R_Calloc/R_Free (main thread); returns 0
  * on success, 1 on a numerical failure. */
-int coxibgrun(const double *time, const int *status, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, int *omat, double *oic, double *vprob, int *sel)
+int coxibgrun(const double *time, const int *status, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, int *omat, double *oic, double *vprob, int *sel)
 {
     double *Xs = R_Calloc((size_t) n * ps, double);
     int    *s0 = R_Calloc((size_t) ps, int);
