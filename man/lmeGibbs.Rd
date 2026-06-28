@@ -1,8 +1,8 @@
-\name{rlmGibbs}
-\alias{rlmGibbs}
+\name{lmeGibbs}
+\alias{lmeGibbs}
 \title{The restricted Gibbs sampler for the linear mixed model (fixed-effect part)}
 \usage{
-rlmGibbs(
+lmeGibbs(
   y,
   x,
   group = NULL,
@@ -10,7 +10,7 @@ rlmGibbs(
   varcomp = NULL,
   V = NULL,
   max.size = ncol(x),
-  permute = FALSE,
+  permute = TRUE,
   n.models = 10,
   threshold = 0.9,
   n.draws = 1000,
@@ -40,9 +40,9 @@ used with \code{Z}}
 default is \code{ncol(x)}}
 
 \item{permute}{the coordinate visiting order within each Gibbs sweep.
-\code{TRUE} draws a fresh random permutation each sweep, so every
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
-\code{FALSE} (default) uses a fixed in-order systematic sweep.}
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
 starts from the empty model (intercept only) and grows, avoiding the
@@ -87,11 +87,11 @@ with \code{V} fixed; whitening by \code{V = L Lt} reduces each candidate fit to
 ordinary least squares on the whitened data, performed in a fast C routine.
 The variance component(s) are estimated once (random-intercept case) or
 supplied, and held fixed across all candidate models.  This is the mixed-model
-counterpart of \code{\link{glmGibbs}}; use \code{\link{rlmIBGS}} in ultrahigh
+counterpart of \code{\link{glmGibbs}}; use \code{\link{lmeIBGS}} in ultrahigh
 dimensions.
 }
 \details{
-\code{rlmGibbs} runs a single random-permutation Metropolis-within-Gibbs walk over the
+\code{lmeGibbs} runs a single random-permutation Metropolis-within-Gibbs walk over the
 inclusion indicators of all \code{p} fixed-effect predictors, with the model size
 capped at \code{max.size} and no block screening, just as \code{\link{glmGibbs}}
 does for the GLM families -- but on \emph{whitened} data.  With the random part
@@ -102,7 +102,7 @@ squares.  The acceptance rule
 the four information criteria and the model averaging over the top \code{n.models}
 models are as described under \code{\link{glmIBGS}}; the variance component(s) are
 estimated once (random-intercept case, by REML) or supplied, and held fixed.  Use
-\code{\link{rlmIBGS}} in ultrahigh dimensions.
+\code{\link{lmeIBGS}} in ultrahigh dimensions.
 
 Specify the random part with exactly one of: \code{group} (a grouping factor
 for a random intercept; its variance ratio is estimated once by REML),
@@ -112,5 +112,5 @@ for a random intercept; its variance ratio is estimated once by REML),
 x <- matrix(rnorm(1000), ncol = 10)
 g <- gl(10, 10)
 y <- rowSums(x[, 1:5]) + rnorm(10)[g] + rnorm(100)
-fit <- rlmGibbs(y, x, group = g, criterion = "BIC")
+fit <- lmeGibbs(y, x, group = g, criterion = "BIC")
 }

@@ -1306,7 +1306,7 @@ void glmcoef(const double *y, const double *X, const double *pw, int n, int q, i
  * tabulate the recorded models, keep the best nm distinct criterion values, and
  * refit a representative of each, so the .Call wrapper returns a compact summary
  * (coef / model.ic / model.freq) instead of the whole indicator matrix.  summnm
- * and summtab are family-independent and shared with cox.c / rlm.c.
+ * and summtab are family-independent and shared with cox.c / lme.c.
  * ========================================================================== */
 
 /* (criterion, sample-index) pair sorted by (ic asc, idx asc): within a group of

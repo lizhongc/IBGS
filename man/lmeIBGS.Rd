@@ -1,8 +1,8 @@
-\name{rlmIBGS}
-\alias{rlmIBGS}
+\name{lmeIBGS}
+\alias{lmeIBGS}
 \title{The iterated block Gibbs sampler for the linear mixed model (fixed-effect part)}
 \usage{
-rlmIBGS(
+lmeIBGS(
   y,
   x,
   group = NULL,
@@ -14,7 +14,7 @@ rlmIBGS(
   block.size = 30,
   n.keep = 20,
   threshold = 0.9,
-  permute = FALSE,
+  permute = TRUE,
   n.draws = 250,
   inv.temp = 0.5,
   ebic.gamma = 0.5,
@@ -50,9 +50,9 @@ used with \code{Z}}
 \item{threshold}{the threshold to select the important predictors, default 0.9}
 
 \item{permute}{the coordinate visiting order within each Gibbs sweep.
-\code{TRUE} draws a fresh random permutation each sweep, so every
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
-\code{FALSE} (default) uses a fixed in-order systematic sweep.}
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
 starts from the empty model (intercept only) and grows, avoiding the
@@ -100,7 +100,7 @@ variance component(s) are estimated once (random-intercept case, by REML from
 the largest estimable fixed model) or supplied, and held fixed.
 }
 \details{
-\code{rlmIBGS} runs the same iterated block Gibbs algorithm as
+\code{lmeIBGS} runs the same iterated block Gibbs algorithm as
 \code{\link{glmIBGS}} -- the screen / select / threshold refinement loop, the
 final long Gibbs run, the acceptance rule \code{min(1, exp(inv.temp *
 (IC.current - IC.proposed)))}, the four information criteria and the model
@@ -123,6 +123,6 @@ for a random intercept), \code{Z} + \code{varcomp}, or a marginal covariance
 x <- matrix(rnorm(100 * 50), 100, 50)
 g <- gl(10, 10)
 y <- rowSums(x[, 1:3]) + rnorm(10)[g] + rnorm(100)
-fit <- rlmIBGS(y, x, group = g, criterion = "BIC")
+fit <- lmeIBGS(y, x, group = g, criterion = "BIC")
 fit
 }

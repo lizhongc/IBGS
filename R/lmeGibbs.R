@@ -7,7 +7,7 @@
 # ordinary least squares on the whitened data, performed in a fast C routine.
 # The variance component(s) are estimated once (random-intercept case) or
 # supplied, and held fixed across all candidate models.  This is the mixed-model
-# counterpart of glmGibbs(); use rlmIBGS() in ultrahigh
+# counterpart of glmGibbs(); use lmeIBGS() in ultrahigh
 # dimensions.
 #
 # Specify the random part with exactly one of: group (a grouping factor
@@ -28,7 +28,7 @@
 #   permute    the coordinate visiting order within each Gibbs sweep. TRUE
 #              draws a fresh random permutation each sweep, so every
 #              predictor is updated exactly once per sweep (without
-#              replacement); FALSE (default) uses a fixed in-order systematic sweep.
+#              replacement); FALSE uses a fixed in-order systematic sweep. TRUE is the default.
 #   n.models   the number of top selected models, default is 10
 #   threshold  the threshold to select the important predictors, default 0.9
 #   n.draws    the half number of generated samples, default is 1000
@@ -53,8 +53,8 @@
 #   is given via group or Z + varcomp, re (the random-effect BLUPs used for
 #   conditional prediction; a directly supplied V gives the fit without re).
 #   Has print, summary, coef and plot methods.
-rlmGibbs <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
-                     max.size = ncol(x), permute = FALSE, n.models = 10,
+lmeGibbs <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
+                     max.size = ncol(x), permute = TRUE, n.models = 10,
                      threshold = 0.9, n.draws = 1000, inv.temp = 0.5,
                      ebic.gamma = 0.5,
                      criterion = c("AIC", "BIC", "AICc", "exBIC"),
@@ -73,13 +73,13 @@ rlmGibbs <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
   if (!is.null(cor.check)) .check.high.cor(x, var.names, cor.check)
 
   # whiten by the held marginal covariance (estimating variance components once)
-  wh <- .rlm.whiten(y, x, group, Z, varcomp, V)
+  wh <- .lme.whiten(y, x, group, Z, varcomp, V)
 
-  out <- .Call("rlm_gibbs_glm",
+  out <- .Call("lme_gibbs_glm",
                wh$ystar, wh$xstar, wh$istar,
                max.size, permute, start.code, n.draws, inv.temp, ebic.gamma, info.code,
                wh$logdetV0, n.models,
                PACKAGE = "IBGS")
 
-  .rlm.result(out, y, x, var.names, wh, inv.temp, criterion, threshold)
+  .lme.result(out, y, x, var.names, wh, inv.temp, criterion, threshold)
 }

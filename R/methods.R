@@ -1,7 +1,7 @@
 # S3 methods, shared plotting palette, and internal helpers for the "IBGS"
 # result object.
 #
-# Every sampler (glmIBGS / glmGibbs / coxIBGS / coxGibbs / rlmIBGS / rlmGibbs)
+# Every sampler (glmIBGS / glmGibbs / coxIBGS / coxGibbs / lmeIBGS / lmeGibbs)
 # returns a list with class "IBGS" (assembled by .ibgs.object).  These methods
 # make the final output read well: a compact print(), a tabular summary(), and a
 # plot() that dispatches to the three diagnostic plots.  The model-averaging
@@ -181,8 +181,8 @@ plot.IBGS <- function(x, which = c("ictrace", "varprob", "modelfreq",
 # The C sampler now returns the model-averaging summary directly (coef / model.ic
 # / model.freq / ic.trace), so the former R-side .fit.summary -- which received
 # the whole indicator matrix and refit each top model through the
-# glm_coef/cox_coef/rlm_coef .Call wrappers -- is gone.  The samplers attach
-# marginal.prob, selected.vars, threshold, var.names (and, for rlm, the
+# glm_coef/cox_coef/lme_coef .Call wrappers -- is gone.  The samplers attach
+# marginal.prob, selected.vars, threshold, var.names (and, for lme, the
 # random-effect block) and the averaged training linear.predictors around this.
 .ibgs.object <- function(out, inv.temp, criterion, family, has.intercept) {
   obj <- structure(

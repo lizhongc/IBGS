@@ -31,7 +31,7 @@
 #   permute    the coordinate visiting order within each Gibbs sweep. TRUE
 #              draws a fresh random permutation each sweep, so every
 #              predictor is updated exactly once per sweep (without
-#              replacement); FALSE (default) uses a fixed in-order systematic sweep.
+#              replacement); FALSE uses a fixed in-order systematic sweep. TRUE is the default.
 #   n.draws    the half number of generated samples, default is 250
 #   inv.temp the tuning parameter, default is 0.5
 #   ebic.gamma the parameter for extended BIC, default is 0.5
@@ -56,9 +56,9 @@
 #   is given via group or Z + varcomp, re (the random-effect BLUPs used for
 #   conditional prediction; a directly supplied V gives the fit without re).
 #   Has print, summary, coef and plot methods.
-rlmIBGS <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
+lmeIBGS <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
                     n.refine = 3, n.models = 10, block.size = 30, n.keep = 20,
-                    threshold = 0.9, permute = FALSE, n.draws = 250,
+                    threshold = 0.9, permute = TRUE, n.draws = 250,
                     inv.temp = 0.5, ebic.gamma = 0.5,
                     criterion = c("AIC", "BIC", "AICc", "exBIC"), n.cores = 1L,
                     cor.check = NULL, start = c("null", "full")){
@@ -76,13 +76,13 @@ rlmIBGS <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
   if (!is.null(cor.check)) .check.high.cor(x, var.names, cor.check)
 
   # whiten by the held marginal covariance (estimating variance components once)
-  wh <- .rlm.whiten(y, x, group, Z, varcomp, V)
+  wh <- .lme.whiten(y, x, group, Z, varcomp, V)
 
-  out <- .Call("rlm_ibgs_glm",
+  out <- .Call("lme_ibgs_glm",
                wh$ystar, wh$xstar, wh$istar,
                n.refine, block.size, n.keep, threshold, permute, start.code, n.draws,
                inv.temp, ebic.gamma, info.code, wh$logdetV0, n.cores, n.models,
                PACKAGE = "IBGS")
 
-  .rlm.result(out, y, x, var.names, wh, inv.temp, criterion, threshold)
+  .lme.result(out, y, x, var.names, wh, inv.temp, criterion, threshold)
 }

@@ -24,8 +24,8 @@ predictors into small groups for ultrahigh dimensions, and a \emph{standalone}
   \code{\link{glmGibbs}} \tab standalone sampler for generalized linear models \cr
   \code{\link{coxIBGS}}  \tab block sampler for the Cox model \cr
   \code{\link{coxGibbs}} \tab standalone sampler for the Cox model \cr
-  \code{\link{rlmIBGS}}  \tab block sampler for the linear mixed model \cr
-  \code{\link{rlmGibbs}} \tab standalone sampler for the linear mixed model \cr
+  \code{\link{lmeIBGS}}  \tab block sampler for the linear mixed model \cr
+  \code{\link{lmeGibbs}} \tab standalone sampler for the linear mixed model \cr
 }
 
 Every sampler returns an object of class \code{"IBGS"} with
@@ -47,7 +47,7 @@ tropical cyclone seasonal forecasting application}.  PhD thesis, University of
 Melbourne. \url{https://hdl.handle.net/11343/311691}
 }
 \seealso{
-\code{\link{glmIBGS}}, \code{\link{coxIBGS}}, \code{\link{rlmIBGS}},
+\code{\link{glmIBGS}}, \code{\link{coxIBGS}}, \code{\link{lmeIBGS}},
 \code{\link{predict.IBGS}}
 }
 \examples{

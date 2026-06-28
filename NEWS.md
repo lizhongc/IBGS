@@ -1,3 +1,20 @@
+# IBGS 1.1.0
+
+## Breaking changes
+
+* The linear mixed-model samplers are renamed from `rlmIBGS()`/`rlmGibbs()` to
+  `lmeIBGS()`/`lmeGibbs()`, correcting the earlier misnomer (`rlm` wrongly
+  suggested a *robust* linear model; the family is a *linear mixed-effects*
+  model). The old names are removed with no deprecated aliases, so calls must be
+  updated. The fitted-object `family` tag is likewise renamed from `"rlm"` to
+  `"lme"`, so `print()`/`summary()` now report `Family: lme`.
+
+* The `permute` argument now defaults to `TRUE` for all samplers
+  (`glmIBGS`/`glmGibbs`, `coxIBGS`/`coxGibbs`, `lmeIBGS`/`lmeGibbs`), drawing a
+  fresh random coordinate permutation each Gibbs sweep instead of the former
+  fixed in-order sweep. **This changes the default behaviour:** set
+  `permute = FALSE` to restore the previous systematic sweep.
+
 # IBGS 1.0.2
 
 ## Breaking changes
@@ -21,7 +38,7 @@
 ## New features
 
 * All six samplers (`glmGibbs`/`glmIBGS`, `coxGibbs`/`coxIBGS`,
-  `rlmGibbs`/`rlmIBGS`) gain a `start = c("null", "full")` argument controlling
+  `lmeGibbs`/`lmeIBGS`) gain a `start = c("null", "full")` argument controlling
   the initial model of the Gibbs chain(s). The new default `"null"` starts from
   the empty model (intercept only; no covariates for the Cox model) and grows,
   avoiding the ill-conditioned full-model start where an information criterion —
@@ -77,11 +94,11 @@ Initial release.
 ## Variable selection
 
 * Iterated block Gibbs samplers with screen–select–threshold refinement
-  (`glmIBGS()`, `coxIBGS()`, `rlmIBGS()`) and matching plain block Gibbs samplers
-  (`glmGibbs()`, `coxGibbs()`, `rlmGibbs()`) for ultrahigh-dimensional problems.
+  (`glmIBGS()`, `coxIBGS()`, `lmeIBGS()`) and matching plain block Gibbs samplers
+  (`glmGibbs()`, `coxGibbs()`, `lmeGibbs()`) for ultrahigh-dimensional problems.
 * Families: gaussian, binomial and poisson generalized linear models (least
   squares / iteratively reweighted least squares), the Cox proportional-hazards
-  model (Efron partial likelihood), and robust / mixed linear models.
+  model (Efron partial likelihood), and linear mixed models.
 * Model selection by `AIC`, `BIC`, `AICc` or extended BIC (`exBIC`).
 * C backend with parallel block screening through OpenMP (`n.cores`); an
   optional near-collinearity guard (`cor.check`).
@@ -93,7 +110,7 @@ Initial release.
 * `predict()`, `fitted()` and `coef()` methods average over the retained models
   with smooth-SIC (BMA-style) weights, on the link or response scale; a single
   retained model can be selected with `average = FALSE`. Conditional prediction
-  with random-effect BLUPs is available for `rlm` fits.
+  with random-effect BLUPs is available for `lme` fits.
 
 ## Object methods and diagnostics
 

@@ -30,7 +30,7 @@ sim_cox <- function(n = 60, p = 20, truth = 1:3, b = c(2, -2, 2)) {
   list(x = x, time = time, status = status, truth = truth)
 }
 
-sim_rlm <- function(n = 80, p = 24, g = 8, truth = 1:3, b = c(3, -3, 3)) {
+sim_lme <- function(n = 80, p = 24, g = 8, truth = 1:3, b = c(3, -3, 3)) {
   x   <- matrix(rnorm(n * p), n, p)
   grp <- gl(g, n / g)
   y   <- as.numeric(x[, truth, drop = FALSE] %*% b) + rnorm(g)[grp] + rnorm(n)

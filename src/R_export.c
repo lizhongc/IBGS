@@ -7,21 +7,21 @@
  * not coerce, so this is done here with coerceVector -- a no-op when the input
  * already has the right type), bracket the random-number usage with
  * GetRNGstate()/PutRNGstate(), call the pure-C computation (glm.c / cox.c /
- * rlm.c), and pack the results back into a named list.  Scalar arguments are
+ * lme.c), and pack the results back into a named list.  Scalar arguments are
  * coerced inline by asInteger/asReal/asLogical.  All of the actual computation
  * lives in those translation units; no statistics happen here.  The entry
  * points are registered in init.c.
  *
  * The per-generation indicator matrix is NOT returned to R: it is allocated as
  * wrapper-owned scratch (R_Calloc), filled by the run, summarized in C
- * (summnm + glmsumm/coxsumm/rlmsumm refit the best n.models models), then freed.
+ * (summnm + glmsumm/coxsumm/lmesumm refit the best n.models models), then freed.
  * Each sampler therefore returns the compact list(coef, model.ic, model.freq,
  * ic.trace, v.prob[, sel]); R only assembles the "IBGS" object around it.
  *
  * Two block + one standalone wrapper per family:
  *   gaussian / binomial / poisson : ibgs_glm, gibbs_sampler_glm
  *   Cox proportional hazards      : cox_ibgs_glm, cox_gibbs_glm
- *   linear mixed model (whitened) : rlm_ibgs_glm, rlm_gibbs_glm
+ *   linear mixed model (whitened) : lme_ibgs_glm, lme_gibbs_glm
  */
 #include <R.h>
 #include <Rinternals.h>
@@ -339,7 +339,7 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
 }
 
 /* ==========================================================================
- * Linear mixed model, fixed-effect selection (computation in rlm.c).
+ * Linear mixed model, fixed-effect selection (computation in lme.c).
  * The data arrive ALREADY WHITENED from R (ystar = L^-1 y,
  * Xstar = L^-1 X, istar = L^-1 1, with the held marginal covariance V = L L');
  * ldv0 = log|V0| is the constant added to the criterion.  The summarized coef is
@@ -347,10 +347,10 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
  * ======================================================================== */
 
 /* ------------------------------------------------------------------ */
-/* .Call: the whole rlm iterated block Gibbs search + summary.         */
+/* .Call: the whole lme iterated block Gibbs search + summary.         */
 /*   Returns list(coef, model.ic, model.freq, ic.trace, v.prob, sel).  */
 /* ------------------------------------------------------------------ */
-SEXP rlm_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nthr, SEXP nmod)
+SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nthr, SEXP nmod)
 {
     int n = nrows(Xst), p = ncols(Xst);
     SEXP ys2 = PROTECT(coerceVector(ys, REALSXP));
@@ -360,12 +360,12 @@ SEXP rlm_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
     int ps = 0, lenf = 0;
 
     GetRNGstate();
-    int fail = rlmibgsel(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), asInteger(nthr), xs, &ps, &lenf);
+    int fail = lmeibgsel(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), asInteger(nthr), xs, &ps, &lenf);
     if (fail) {
         PutRNGstate();
         R_Free(xs);
         UNPROTECT(3);
-        error("rlm_ibgs_glm: out of memory or numerical failure");
+        error("lme_ibgs_glm: out of memory or numerical failure");
     }
 
     int *omat = R_Calloc((size_t) lenf * (1 + ps), int);
@@ -373,13 +373,13 @@ SEXP rlm_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
     SEXP sel   = PROTECT(allocVector(INTSXP, ps));
 
-    fail = rlmibgrun(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, lenf, asLogical(perm), asInteger(start), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob), INTEGER(sel));
+    fail = lmeibgrun(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, lenf, asLogical(perm), asInteger(start), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob), INTEGER(sel));
     PutRNGstate();
     if (fail) {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
-        error("rlm_ibgs_glm: out of memory or numerical failure");
+        error("lme_ibgs_glm: out of memory or numerical failure");
     }
 
     int nm_req = summnm(REAL(msic), lenf, asInteger(nmod));
@@ -387,19 +387,19 @@ SEXP rlm_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
-        error("rlm_ibgs_glm: out of memory");
+        error("lme_ibgs_glm: out of memory");
     }
     int nr = p + 1;
     SEXP coef = PROTECT(allocMatrix(REALSXP, nr, nm_req));
     SEXP mic  = PROTECT(allocVector(REALSXP, nm_req));
     SEXP mfrq = PROTECT(allocVector(REALSXP, nm_req));
     int nm = 0;
-    fail = rlmsumm(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, omat, REAL(msic), lenf, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
+    fail = lmesumm(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, omat, REAL(msic), lenf, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
     if (fail) {
         UNPROTECT(9);
-        error("rlm_ibgs_glm: out of memory or numerical failure");
+        error("lme_ibgs_glm: out of memory or numerical failure");
     }
 
     SEXP out = PROTECT(allocVector(VECSXP, 6));
@@ -423,10 +423,10 @@ SEXP rlm_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
 }
 
 /* ------------------------------------------------------------------ */
-/* .Call: the standalone (non-block) rlm Gibbs sampler + summary.      */
+/* .Call: the standalone (non-block) lme Gibbs sampler + summary.      */
 /*   Returns list(coef, model.ic, model.freq, ic.trace, v.prob).       */
 /* ------------------------------------------------------------------ */
-SEXP rlm_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nmod)
+SEXP lme_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nmod)
 {
     int n = nrows(Xst), p = ncols(Xst), nlen = asInteger(len);
     SEXP ys2 = PROTECT(coerceVector(ys, REALSXP));
@@ -440,13 +440,13 @@ SEXP rlm_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
 
     GetRNGstate();
-    int fail = rlmgbsam(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(nvar), asLogical(perm), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob));
+    int fail = lmegbsam(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(nvar), asLogical(perm), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob));
     PutRNGstate();
     if (fail) {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(5);
-        error("rlm_gibbs_glm: out of memory or numerical failure");
+        error("lme_gibbs_glm: out of memory or numerical failure");
     }
 
     int nm_req = summnm(REAL(msic), nlen, asInteger(nmod));
@@ -454,19 +454,19 @@ SEXP rlm_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(5);
-        error("rlm_gibbs_glm: out of memory");
+        error("lme_gibbs_glm: out of memory");
     }
     int nr = p + 1;
     SEXP coef = PROTECT(allocMatrix(REALSXP, nr, nm_req));
     SEXP mic  = PROTECT(allocVector(REALSXP, nm_req));
     SEXP mfrq = PROTECT(allocVector(REALSXP, nm_req));
     int nm = 0;
-    fail = rlmsumm(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, p, omat, REAL(msic), nlen, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
+    fail = lmesumm(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, p, omat, REAL(msic), nlen, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
     if (fail) {
         UNPROTECT(8);
-        error("rlm_gibbs_glm: out of memory or numerical failure");
+        error("lme_gibbs_glm: out of memory or numerical failure");
     }
 
     SEXP out = PROTECT(allocVector(VECSXP, 5));

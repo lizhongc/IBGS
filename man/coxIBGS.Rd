@@ -11,7 +11,7 @@ coxIBGS(
   block.size = 30,
   n.keep = 20,
   threshold = 0.9,
-  permute = FALSE,
+  permute = TRUE,
   n.draws = 250,
   inv.temp = 0.5,
   ebic.gamma = 0.5,
@@ -40,9 +40,9 @@ coxIBGS(
 \item{threshold}{the threshold to select the important predictors, default 0.9}
 
 \item{permute}{the coordinate visiting order within each Gibbs sweep.
-\code{TRUE} draws a fresh random permutation each sweep, so every
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
-\code{FALSE} (default) uses a fixed in-order systematic sweep.}
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
 starts from the empty model (no covariates; the Cox model has no intercept) and

@@ -38,7 +38,7 @@
 }
 
 # Apply the family inverse link to a linear predictor.  type = "link" returns it
-# unchanged; "response" maps to the response scale (identity for gaussian/rlm,
+# unchanged; "response" maps to the response scale (identity for gaussian/lme,
 # logistic for binomial, exponential for poisson and for the cox relative-risk
 # score exp(x beta)).
 .ibgs.response <- function(lp, family, type) {
@@ -48,7 +48,7 @@
          binomial = 1 / (1 + exp(-lp)),
          poisson  = exp(lp),
          cox      = exp(lp),
-         rlm      = lp,
+         lme      = lp,
          lp)
 }
 
@@ -86,7 +86,7 @@ coef.IBGS <- function(object, model = 1, average = FALSE,
 # Model-averaged prediction (the default) or single-model prediction on new data,
 # on the response (default) or link scale.  With newdata = NULL the stored
 # model-averaged fitted values on the training data are returned (see
-# fitted.IBGS).  For an rlm fit, supplying group.new or Z.new adds the matching
+# fitted.IBGS).  For an lme fit, supplying group.new or Z.new adds the matching
 # model-averaged random-effect BLUP (conditional prediction); unseen groups
 # contribute 0 (the marginal mean).
 #
@@ -98,8 +98,8 @@ coef.IBGS <- function(object, model = 1, average = FALSE,
 #   average   average over the top n.models (default) instead of one model
 #   n.models  number of top models to average when average = TRUE
 #   model     which retained model to use when average = FALSE (1 = best)
-#   group.new rlm: grouping factor of the new data for conditional prediction
-#   Z.new     rlm: random-effects design of the new data for conditional prediction
+#   group.new lme: grouping factor of the new data for conditional prediction
+#   Z.new     lme: random-effects design of the new data for conditional prediction
 #   ...       ignored
 # Value: a numeric vector of predictions
 predict.IBGS <- function(object, newdata = NULL, type = c("response", "link"),
@@ -111,8 +111,8 @@ predict.IBGS <- function(object, newdata = NULL, type = c("response", "link"),
     lp <- object$linear.predictors            # stored averaged training lp (link)
   } else {
     lp <- .ibgs.lp(object, newdata, n.models, average, model)
-    # rlm conditional prediction: add the model-averaged random-effect BLUP
-    if (fam == "rlm" && !is.null(object$re) &&
+    # lme conditional prediction: add the model-averaged random-effect BLUP
+    if (fam == "lme" && !is.null(object$re) &&
         (!is.null(group.new) || !is.null(Z.new))) {
       w    <- .ibgs.weights(object, n.models)
       blup <- object$re$blup[, seq_len(length(w)), drop = FALSE] %*% w

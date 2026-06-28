@@ -14,8 +14,8 @@ Methods are described in Chen (2022),
 ## Features
 
 - **Families:** gaussian, binomial and poisson GLMs (least squares / IRLS), the
-  Cox model for survival data (Efron partial likelihood), and robust / mixed
-  linear models.
+  Cox model for survival data (Efron partial likelihood), and linear mixed
+  models.
 - **Selection criteria:** `AIC`, `BIC`, `AICc` and extended BIC (`exBIC`).
 - **Two samplers per family:** an iterated block Gibbs sampler with
   screen–select–threshold *refinement* (`*IBGS`), and a plain block Gibbs
@@ -73,7 +73,7 @@ fitted(fit)               # model-averaged fitted values
 |---|---|---|
 | GLM (gaussian / binomial / poisson) | `glmIBGS()` | `glmGibbs()` |
 | Cox proportional hazards | `coxIBGS()` | `coxGibbs()` |
-| Linear mixed model | `rlmIBGS()` | `rlmGibbs()` |
+| Linear mixed model | `lmeIBGS()` | `lmeGibbs()` |
 
 Each sampler returns an object of class `"IBGS"` with `print()`, `summary()`,
 `plot()`, `coef()`, `predict()` and `fitted()` methods. The plotting helpers
@@ -85,7 +85,7 @@ of top models to retain and average over), `threshold` (marginal-probability
 cut-off for the reported selected variables), `inv.temp` (inverse temperature),
 and `n.cores` (OpenMP threads for block screening). For survival data,
 `coxIBGS(y, status, x)` takes the follow-up time `y` and the event indicator
-`status`; for `rlmIBGS()`, `group`/`Z` specify the random-effects structure.
+`status`; for `lmeIBGS()`, `group`/`Z` specify the random-effects structure.
 
 ## Documentation
 

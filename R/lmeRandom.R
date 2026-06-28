@@ -31,7 +31,7 @@
 # fixed predictors when estimable, else intercept only).  Profiles beta and
 # sigma_e^2; minimises -2*REML(lambda) over log(lambda) with the closed-form
 # whitening above.  Returns the estimated lambda and residual variance.
-.rlm.reml <- function(y, D, gidx, gsz, n) {
+.lme.reml <- function(y, D, gidx, gsz, n) {
   pD  <- ncol(D)
   obj <- function(loglam) {
     lam <- exp(loglam)
@@ -55,7 +55,7 @@
 # Exactly one of `group`, (`Z`+`varcomp`), `V` specifies the random part.
 # Returns ystar/xstar/istar (whitened), logdetV0 (= log|V0|), and an `re` list
 # carrying what conditional prediction needs.
-.rlm.whiten <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL) {
+.lme.whiten <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL) {
   n <- length(y)
   x <- as.matrix(x)
 
@@ -67,7 +67,7 @@
     # estimate lambda once: from the full model if it is estimable (p < n),
     # otherwise from the intercept-only (null) model.
     Dref  <- if (ncol(x) <= n - 2L) cbind(1, x) else matrix(1, n, 1)
-    est   <- .rlm.reml(y, Dref, gidx, gsz, n)
+    est   <- .lme.reml(y, Dref, gidx, gsz, n)
     lam   <- est$lambda
     ystar <- .ri.whiten(y, lam, gidx, gsz)[, 1]
     xstar <- .ri.whiten(x, lam, gidx, gsz)
@@ -100,13 +100,13 @@
        logdetV0 = logdetV0, re = re)
 }
 
-# Assemble the rlm result from the compact C sampler output `out`, the original
+# Assemble the lme result from the compact C sampler output `out`, the original
 # (y, x), and the whitening `wh`.  The C call already returns the original-space
 # coefficient summary (whitening leaves the GLS fixed effects unchanged); this
 # adds the per-top-model random-effect BLUPs from the original-space residuals,
 # the marginal-probability fields, and the averaged training linear predictors.
-.rlm.result <- function(out, y, x, var.names, wh, inv.temp, info, threshold) {
-  result <- .ibgs.object(out, inv.temp, info, "rlm", TRUE)
+.lme.result <- function(out, y, x, var.names, wh, inv.temp, info, threshold) {
+  result <- .ibgs.object(out, inv.temp, info, "lme", TRUE)
 
   # per-top-model BLUPs from original-space residuals r = y - cbind(1, x) %*% beta.
   # A directly-supplied marginal covariance V ("marginal") has no random-effects
@@ -118,7 +118,7 @@
     Xd   <- cbind(1, x)
     for (m in seq_len(nm)) {
       r <- as.numeric(y - Xd %*% result$coef[, m])
-      B.re[, m] <- .rlm.blup(r, wh$re)
+      B.re[, m] <- .lme.blup(r, wh$re)
     }
     result$re <- list(blup = B.re, type = wh$re$type, levels = wh$re$levels,
                       lambda = wh$re$lambda, sigma2e = wh$re$sigma2e)
@@ -135,7 +135,7 @@
 # Random-effect BLUPs b_hat = G Z' V^{-1} r from the ORIGINAL-space residual
 # r = y - X beta_hat.  Random-intercept: b_i = (n_i lambda /(1 + n_i lambda)) *
 # mean(r in group i).  General: b = sigma2b * Z' V^{-1} r.
-.rlm.blup <- function(r, re) {
+.lme.blup <- function(r, re) {
   if (re$type == "group") {
     vapply(seq_along(re$gsz), function(g) {
       ng <- re$gsz[g]

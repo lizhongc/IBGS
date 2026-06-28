@@ -10,9 +10,9 @@ extern SEXP cox_ibgs_glm(SEXP y_, SEXP status_, SEXP X_, SEXP weights_, SEXP nit
 
 extern SEXP cox_gibbs_glm(SEXP y_, SEXP status_, SEXP X_, SEXP weights_, SEXP nvars_, SEXP perm_, SEXP start_, SEXP len_, SEXP k_, SEXP gamma_, SEXP info_, SEXP nmodels_);
 
-extern SEXP rlm_ibgs_glm(SEXP ystar_, SEXP Xstar_, SEXP istar_, SEXP niter_, SEXP H_, SEXP kapp_, SEXP tau_, SEXP perm_, SEXP start_, SEXP len_, SEXP k_, SEXP gamma_, SEXP info_, SEXP logdetV0_, SEXP nthr_, SEXP nmodels_);
+extern SEXP lme_ibgs_glm(SEXP ystar_, SEXP Xstar_, SEXP istar_, SEXP niter_, SEXP H_, SEXP kapp_, SEXP tau_, SEXP perm_, SEXP start_, SEXP len_, SEXP k_, SEXP gamma_, SEXP info_, SEXP logdetV0_, SEXP nthr_, SEXP nmodels_);
 
-extern SEXP rlm_gibbs_glm(SEXP ystar_, SEXP Xstar_, SEXP istar_, SEXP nvars_, SEXP perm_, SEXP start_, SEXP len_, SEXP k_, SEXP gamma_, SEXP info_, SEXP logdetV0_, SEXP nmodels_);
+extern SEXP lme_gibbs_glm(SEXP ystar_, SEXP Xstar_, SEXP istar_, SEXP nvars_, SEXP perm_, SEXP start_, SEXP len_, SEXP k_, SEXP gamma_, SEXP info_, SEXP logdetV0_, SEXP nmodels_);
 
 extern SEXP ibgs_diag(SEXP ic_, SEXP nseg_, SEXP lagmax_, SEXP nbin_);
 
@@ -21,8 +21,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"gibbs_sampler_glm", (DL_FUNC) &gibbs_sampler_glm, 13},
     {"cox_ibgs_glm",      (DL_FUNC) &cox_ibgs_glm,      16},
     {"cox_gibbs_glm",     (DL_FUNC) &cox_gibbs_glm,     12},
-    {"rlm_ibgs_glm",      (DL_FUNC) &rlm_ibgs_glm,      16},
-    {"rlm_gibbs_glm",     (DL_FUNC) &rlm_gibbs_glm,     12},
+    {"lme_ibgs_glm",      (DL_FUNC) &lme_ibgs_glm,      16},
+    {"lme_gibbs_glm",     (DL_FUNC) &lme_gibbs_glm,     12},
     {"ibgs_diag",         (DL_FUNC) &ibgs_diag,          4},
     {NULL, NULL, 0}
 };

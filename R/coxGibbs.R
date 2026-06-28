@@ -18,7 +18,7 @@
 #   permute    the coordinate visiting order within each Gibbs sweep. TRUE
 #              draws a fresh random permutation each sweep, so every
 #              predictor is updated exactly once per sweep (without
-#              replacement); FALSE (default) uses a fixed in-order systematic sweep.
+#              replacement); FALSE uses a fixed in-order systematic sweep. TRUE is the default.
 #   n.models   the number of top selected models, default is 10
 #   threshold  the threshold to select the important predictors, default 0.9
 #   n.draws    the half number of generated samples, default is 1000
@@ -44,7 +44,7 @@
 #   and visit frequency of each top model), ic.trace (the criterion at
 #   every generation) and criterion (the criterion name).  Has
 #   print, summary, coef and plot methods.
-coxGibbs <- function(y, status, x, max.size = ncol(x), permute = FALSE,
+coxGibbs <- function(y, status, x, max.size = ncol(x), permute = TRUE,
                             n.models = 10, threshold = 0.9, n.draws = 1000,
                             inv.temp = 0.5, ebic.gamma = 0.5,
                             criterion = c("AIC", "BIC", "AICc", "exBIC"),

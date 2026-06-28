@@ -22,7 +22,7 @@ algorithm in detail.
 
 This vignette walks through a small generalized-linear-model example.  The same
 interface serves the Cox model (\texttt{coxIBGS}/\texttt{coxGibbs}) and the
-linear mixed model (\texttt{rlmIBGS}/\texttt{rlmGibbs}).
+linear mixed model (\texttt{lmeIBGS}/\texttt{lmeGibbs}).
 
 \section{A small example}
 

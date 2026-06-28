@@ -6,7 +6,7 @@ glmGibbs(
   y,
   x,
   max.size = ncol(x),
-  permute = FALSE,
+  permute = TRUE,
   n.models = 10,
   threshold = 0.9,
   n.draws = 1000,
@@ -29,9 +29,9 @@ glmGibbs(
 default is \code{ncol(x)}}
 
 \item{permute}{the coordinate visiting order within each Gibbs sweep.
-\code{TRUE} draws a fresh random permutation each sweep, so every
+\code{TRUE} (default) draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
-\code{FALSE} (default) uses a fixed in-order systematic sweep.}
+\code{FALSE} uses a fixed in-order systematic sweep.}
 
 \item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
 starts from the empty model (intercept only; no covariates for the Cox model)

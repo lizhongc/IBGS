@@ -1,9 +1,9 @@
 /*
- * rlm.c -- the linear-mixed-model fixed-effect family (whitened OLS): the
+ * lme.c -- the linear-mixed-model fixed-effect family (whitened OLS): the
  * Metropolis-within-Gibbs sampler step and the iterated-block-Gibbs
  * orchestration.
  *
- * Consolidates the former rlm_step.c and rlm_ibgs.c.  The original per-module
+ * Consolidates the former lme_step.c and lme_ibgs.c.  The original per-module
  * comment blocks below act as section banners.
  */
 #include "ibgs.h"
@@ -20,7 +20,7 @@
 #endif
 
 /*
- * rlm_step.c -- Metropolis-within-Gibbs sampler over fixed-effect indicators for
+ * lme_step.c -- Metropolis-within-Gibbs sampler over fixed-effect indicators for
  * a linear mixed model with a held random part.
  *
  * The data are already whitened in R (ystar = L^-1 y, Xstar = L^-1 X,
@@ -37,12 +37,12 @@
 #define UNIF(rng) ((rng) ? rngunif(rng) : unif_rand())
 
 /* information criterion of the active whitened columns (defined below) */
-static double rlmic(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf, int n, double ldv0, int info, double gamma, int p0, int *ok);
+static double lmeic(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf, int n, double ldv0, int info, double gamma, int p0, int *ok);
 
-/* Allocate the rlm sampler workspace for up to capt columns over n rows.
+/* Allocate the lme sampler workspace for up to capt columns over n rows.
  * Uses R_Calloc (main thread only); on out of memory R_Calloc raises an R error
  * rather than returning. */
-int rlwsallc(rlwst *ws, int capt, int n)
+int lmewsallc(lmewst *ws, int capt, int n)
 {
     if (capt < 1) capt = 1;
     ws->capt = capt;
@@ -62,7 +62,7 @@ int rlwsallc(rlwst *ws, int capt, int n)
     return 0;
 }
 
-void rlwsfree(rlwst *ws)
+void lmewsfree(lmewst *ws)
 {
     R_Free(ws->inc);
     R_Free(ws->active);
@@ -77,7 +77,7 @@ void rlwsfree(rlwst *ws)
     R_Free(ws->Xb);
 }
 
-int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, double ldv0, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, rlwst *wsi)
+int runlmegb(const double *ystar, const double *Xstar, const double *istar, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, double ldv0, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, lmewst *wsi)
 {
     int ptot  = p1 + p2;
     int ptot1 = ptot + 1;                 /* + intercept (column 0 = istar) */
@@ -86,11 +86,11 @@ int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int 
     /* Use the caller's workspace, or allocate a private one (main thread only)
      * when wsi is NULL; pointing the original locals at the workspace fields
      * keeps the sampler body below unchanged. */
-    rlwst  wsl;
-    rlwst *ws    = wsi;
+    lmewst  wsl;
+    lmewst *ws    = wsi;
     int    owned = 0;
     if (!ws) {
-        rlwsallc(&wsl, ptot1, n);
+        lmewsallc(&wsl, ptot1, n);
         ws    = &wsl;
         owned = 1;
     }
@@ -142,8 +142,8 @@ int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int 
 
     /* model criterion: OLS RSS of the active whitened columns + the constant
      * log|V0|; npar = q+1 (coefs incl. intercept + sigma^2), npred = q-1. */
-    #define RLM_IC(qc, okc)                                                     \
-        rlmic(G, Gy, ptot1, active, (qc), yty, Sbuf, bbuf, n, ldv0, info,      \
+    #define LME_IC(qc, okc)                                                     \
+        lmeic(G, Gy, ptot1, active, (qc), yty, Sbuf, bbuf, n, ldv0, info,      \
               gamma, p0, &(okc))
 
     /* ----- initial state ----- */
@@ -164,7 +164,7 @@ int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int 
 
     int q, ok;
     BUILD_ACTIVE(q);
-    double curic = RLM_IC(q, ok);
+    double curic = LME_IC(q, ok);
     if (!ok) curic = R_PosInf;
 
     if (ofrq)
@@ -192,7 +192,7 @@ int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int 
             inc[j] ^= 1;
             int pq;
             BUILD_ACTIVE(pq);
-            double propic = RLM_IC(pq, ok);
+            double propic = LME_IC(pq, ok);
 
             int accept = 0;
             if (ok) {
@@ -221,14 +221,14 @@ int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int 
     if (ofrq)
         for (a = 0; a < p1; a++) ofrq[a] /= (double) len;
 
-    #undef RLM_IC
+    #undef LME_IC
     #undef BUILD_ACTIVE
-    if (owned) rlwsfree(&wsl);
+    if (owned) lmewsfree(&wsl);
     return 0;
 }
 
 /* helper kept after the entry so the macro above reads cleanly */
-static double rlmic(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf, int n, double ldv0, int info, double gamma, int p0, int *ok)
+static double lmeic(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf, int n, double ldv0, int info, double gamma, int p0, int *ok)
 {
     double rss = rsschol(G, Gy, ptot1, active, q, yty, Sbuf, bbuf);
     if (rss < 0.0) { *ok = 0; return 0.0; }
@@ -237,11 +237,11 @@ static double rlmic(const double *G, const double *Gy, int ptot1, const int *act
     return icval(base, q + 1, q - 1, n, info, gamma, p0);
 }
 /*
- * rlm_ibgs.c -- pure-C orchestration of the iterated block Gibbs sampler for
- * linear-mixed-model fixed-effect selection (random part held fixed).  The rlm
+ * lme_ibgs.c -- pure-C orchestration of the iterated block Gibbs sampler for
+ * linear-mixed-model fixed-effect selection (random part held fixed).  The lme
  * parallel of ibgs.c / cox_ibgs.c: same screen -> select -> threshold structure
  * and reproducible parallel block screening; only the per-model fit differs
- * (whitened OLS via runrlmgb).  See glm.c for the full algorithm.
+ * (whitened OLS via runlmegb).  See glm.c for the full algorithm.
  *
  * The data are whitened in R, so the whitened intercept `istar` is shared across
  * every block and threaded through unchanged.  Block sizing uses the sample size
@@ -252,12 +252,12 @@ static double rlmic(const double *G, const double *Gy, int ptot1, const int *act
 
 
 /* ------------------------------------------------------------------ */
-/* Helpers (rlm-specific block sizing/seeding; the freq/index ranking,  */
+/* Helpers (lme-specific block sizing/seeding; the freq/index ranking,  */
 /* column gather, and per-search workspace are shared, from ibgs.h).    */
 /* ------------------------------------------------------------------ */
 
 /* number of blocks = ceil(nS1 / block_size), block_size = min(H, n - nS2) */
-static int rlmnblks(int nS1, int H, int n, int nS2)
+static int lmenblks(int nS1, int H, int n, int nS2)
 {
     int bs = (H < n - nS2) ? H : (n - nS2);
     if (bs < 1) bs = 1;
@@ -265,7 +265,7 @@ static int rlmnblks(int nS1, int H, int n, int nS2)
     return (h < 1) ? 1 : h;
 }
 
-static void rlmdrwbl(int nS1, int h, int *assign, uint64_t *seeds)
+static void lmedrwbl(int nS1, int h, int *assign, uint64_t *seeds)
 {
     for (int i = 0; i < nS1; i++) {
         int a = (int) (unif_rand() * h);
@@ -284,7 +284,7 @@ static void rlmdrwbl(int nS1, int h, int *assign, uint64_t *seeds)
  * shared whitened intercept istar.  Writes each S1 column's inclusion frequency
  * into vfreq[].  Returns 0 on success, 1 on failure.
  */
-static int rlmscrbl(const double *ystar, const double *Xstar, const double *istar, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int start_full, int len, double k, double gamma, int p0, int info, double ldv0, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
+static int lmescrbl(const double *ystar, const double *Xstar, const double *istar, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int start_full, int len, double k, double gamma, int p0, int info, double ldv0, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
 {
     int *sz  = R_Calloc((size_t) (h > 0 ? h : 1), int);
     int *off = R_Calloc((size_t) (h + 1), int);
@@ -311,8 +311,8 @@ static int rlmscrbl(const double *ystar, const double *Xstar, const double *ista
 #ifndef _OPENMP
     nws = 1;
 #endif
-    rlwst *wsa = R_Calloc((size_t) nws, rlwst);
-    for (int t = 0; t < nws; t++) rlwsallc(&wsa[t], capt, n);
+    lmewst *wsa = R_Calloc((size_t) nws, lmewst);
+    for (int t = 0; t < nws; t++) lmewsallc(&wsa[t], capt, n);
 
     int fail = 0;
 #ifdef _OPENMP
@@ -323,9 +323,9 @@ static int rlmscrbl(const double *ystar, const double *Xstar, const double *ista
         if (pb <= 0) continue;
 
 #ifdef _OPENMP
-        rlwst *ws = &wsa[omp_get_thread_num()];
+        lmewst *ws = &wsa[omp_get_thread_num()];
 #else
-        rlwst *ws = &wsa[0];
+        lmewst *ws = &wsa[0];
 #endif
         int    *bcols = ws->bcols;
         int    *s0    = ws->s0;
@@ -342,7 +342,7 @@ static int rlmscrbl(const double *ystar, const double *Xstar, const double *ista
 
         rngt rng;
         rngseed(&rng, seeds[b]);
-        int rc = runrlmgb(ystar, Xb, istar, n, pb, nS2, s0, perm, len, k,
+        int rc = runlmegb(ystar, Xb, istar, n, pb, nS2, s0, perm, len, k,
                           gamma, p0, info, ldv0, pb + nS2, &rng, NULL,
                           fr, NULL, ws);
         if (rc) {
@@ -356,7 +356,7 @@ static int rlmscrbl(const double *ystar, const double *Xstar, const double *ista
         }
     }
 
-    for (int t = 0; t < nws; t++) rlwsfree(&wsa[t]);
+    for (int t = 0; t < nws; t++) lmewsfree(&wsa[t]);
     R_Free(wsa);
     R_Free(sz);
     R_Free(off);
@@ -369,7 +369,7 @@ static int rlmscrbl(const double *ystar, const double *Xstar, const double *ista
 /* Public entry points.                                               */
 /* ------------------------------------------------------------------ */
 
-int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf)
+int lmegbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf)
 {
     if (nvars < 1) nvars = 1;
     if (nvars > p) nvars = p;
@@ -378,14 +378,14 @@ int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int 
     if (!s0) return 1;
     for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
-    int fail = runrlmgb(ystar, Xstar, istar, n, p, 0, s0, perm, len, k, gamma,
+    int fail = runlmegb(ystar, Xstar, istar, n, p, 0, s0, perm, len, k, gamma,
                         p, info, ldv0, nvars, /*rng=*/NULL, mbuf, vpbuf,
                         sicbuf, /*ws=*/NULL);
     free(s0);
     return fail;
 }
 
-int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xsout, int *psout, int *lfout)
+int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xsout, int *psout, int *lfout)
 {
     int p0 = p;
 
@@ -394,7 +394,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
 #endif
 
     /* one per-search workspace, reused across every iteration and the final
-     * screening (the long run that records the outputs is done by rlmibgrun) */
+     * screening (the long run that records the outputs is done by lmeibgrun) */
     srwst ws;
     if (srwsallc(&ws, p, n)) return 1;
     int    *inS2   = ws.inS2;
@@ -410,10 +410,10 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
         int nS1 = 0;
         for (int j = 0; j < p; j++) if (!inS2[j]) S1[nS1++] = j;
 
-        int h = rlmnblks(nS1, H, n, nS2);
-        rlmdrwbl(nS1, h, assign, ws.seeds);
+        int h = lmenblks(nS1, H, n, nS2);
+        lmedrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = rlmscrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm,
+        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm,
                         start_full, len, k, gamma, p0, info, ldv0, nthr, assign,
                         ws.seeds, vfreq);
         if (fail) break;
@@ -437,7 +437,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
         double *fr = ws.fr;
         gathcols(Xstar, n, xs, ps, Xs);
         for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
-        fail = runrlmgb(ystar, Xs, istar, n, ps, 0, s0, perm, len, k, gamma,
+        fail = runlmegb(ystar, Xs, istar, n, ps, 0, s0, perm, len, k, gamma,
                         p0, info, ldv0, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
 
@@ -455,7 +455,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
     }
 
     /* ---- final screening + select: fix the converged candidate set ----
-     * The long Gibbs run that records the R outputs is done by rlmibgrun(), so
+     * The long Gibbs run that records the R outputs is done by lmeibgrun(), so
      * this kernel touches no R objects. */
     *lfout = 4 * len;
     int ps = 0;
@@ -464,10 +464,10 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
         int nS1 = 0;
         for (int j = 0; j < p; j++) if (!inS2[j]) S1[nS1++] = j;
 
-        int h = rlmnblks(nS1, H, n, nS2);
-        rlmdrwbl(nS1, h, assign, ws.seeds);
+        int h = lmenblks(nS1, H, n, nS2);
+        lmedrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = rlmscrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h,
+        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h,
                         perm, start_full, len, k, gamma, p0, info, ldv0, nthr,
                         assign, ws.seeds, vfreq);
 
@@ -493,12 +493,12 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
     return fail;
 }
 
-/* Final long whitened-OLS Gibbs run (the fill phase behind the rlm_ibgs_glm()
+/* Final long whitened-OLS Gibbs run (the fill phase behind the lme_ibgs_glm()
  * .Call wrapper).  Given the converged candidate columns xs (ps 0-based indices
- * from rlmibgsel) it runs a length-lenf Gibbs sampler on the whitened design over
+ * from lmeibgsel) it runs a length-lenf Gibbs sampler on the whitened design over
  * those columns and writes the results straight into the caller's buffers -- no
  * R/SEXP handling.
- *   xs    : the ps candidate columns (0-based), as returned by rlmibgsel.
+ *   xs    : the ps candidate columns (0-based), as returned by lmeibgsel.
  *   ps    : number of candidate columns; lenf : recorded sweeps (= 4*len).
  *   ldv0  : log|V0|, the constant added to the criterion (whitening).
  *   omat  : OUTPUT int[lenf * (1+ps)] indicator matrix (column-major).
@@ -508,7 +508,7 @@ int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int
  *   sel   : OUTPUT int[ps] 1-based original indices of the candidate columns.
  * Allocates its gather/run scratch with R_Calloc/R_Free (main thread); returns 0
  * on success, 1 on a numerical failure. */
-int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel)
+int lmeibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel)
 {
     double *Xs = R_Calloc((size_t) n * ps, double);
     int    *s0 = R_Calloc((size_t) ps, int);
@@ -516,7 +516,7 @@ int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int
 
     gathcols(Xstar, n, xs, ps, Xs);
     for (int i = 0; i < ps; i++) s0[i] = 1;
-    int fail = runrlmgb(ystar, Xs, istar, n, ps, 0, s0, perm, lenf, k, gamma, p, info, ldv0, ps, NULL, omat, fr, oic, NULL);
+    int fail = runlmegb(ystar, Xs, istar, n, ps, 0, s0, perm, lenf, k, gamma, p, info, ldv0, ps, NULL, omat, fr, oic, NULL);
 
     if (!fail) {
         for (int j = 0; j < p; j++) vprob[j] = 0.0;
@@ -532,12 +532,12 @@ int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int
     return fail;
 }
 
-/* rlmcoef -- see ibgs.h for the full contract.  Assembles the whitened Gram
+/* lmecoef -- see ibgs.h for the full contract.  Assembles the whitened Gram
  * G = D'D and cross-product Gy = D'ystar, solves G beta = Gy with cholsolv(),
  * then zeros any non-finite coefficient.  Because the data are pre-whitened the
  * plain (unweighted) normal equations already give the GLS fixed-effect estimate.
  * Scratch is R_Calloc/R_Free (main thread). */
-void rlmcoef(const double *ystar, const double *D, int n, int q, double *bout)
+void lmecoef(const double *ystar, const double *D, int n, int q, double *bout)
 {
     for (int a = 0; a < q; a++) bout[a] = 0.0;
     if (q < 1) return;
@@ -572,13 +572,13 @@ void rlmcoef(const double *ystar, const double *D, int n, int q, double *bout)
     R_Free(Gy);
 }
 
-/* rlm model-averaging summary: the rlm.c parallel of glmsumm.  Refits on the
+/* lme model-averaging summary: the lme.c parallel of glmsumm.  Refits on the
  * WHITENED data -- the representative design is D = [istar | active Xstar columns]
- * and rlmcoef returns the ORIGINAL-space [intercept, beta] -- so coef is nr = p+1
+ * and lmecoef returns the ORIGINAL-space [intercept, beta] -- so coef is nr = p+1
  * rows (intercept in row 0).  omat/oic/xs as in glmsumm; micout/frqout length
  * nm_in.  Writes *nm models.  summnm/summtab are shared from glm.c.  Returns 0,
  * or 1 on allocation failure. */
-int rlmsumm(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int nm_in, double *coef, double *micout, double *frqout, int *nm)
+int lmesumm(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int nm_in, double *coef, double *micout, double *frqout, int *nm)
 {
     int nr = p + 1;
     int cap = ps > 0 ? ps : 1;
@@ -616,7 +616,7 @@ int rlmsumm(const double *ystar, const double *Xstar, const double *istar, int n
         memcpy(D, istar, (size_t) n * sizeof(double));
         for (int j = 0; j < q; j++)
             memcpy(D + (size_t)(j + 1) * n, Xstar + (size_t) act[j] * n, (size_t) n * sizeof(double));
-        rlmcoef(ystar, D, n, q + 1, bout);
+        lmecoef(ystar, D, n, q + 1, bout);
         coef[(size_t) i * nr] = bout[0];
         for (int j = 0; j < q; j++)
             coef[(size_t)(act[j] + 1) + (size_t) i * nr] = bout[j + 1];

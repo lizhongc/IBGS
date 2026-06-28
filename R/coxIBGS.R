@@ -22,7 +22,7 @@
 #   permute    the coordinate visiting order within each Gibbs sweep. TRUE
 #              draws a fresh random permutation each sweep, so every
 #              predictor is updated exactly once per sweep (without
-#              replacement); FALSE (default) uses a fixed in-order systematic sweep.
+#              replacement); FALSE uses a fixed in-order systematic sweep. TRUE is the default.
 #   n.draws    the half number of generated samples, default is 250
 #   inv.temp the tuning parameter, default is 0.5
 #   ebic.gamma the parameter for extended BIC, default is 0.5
@@ -50,7 +50,7 @@
 #   print, summary, coef and plot methods.
 coxIBGS <- function(y, status, x, n.refine = 3, n.models = 10,
                                  block.size = 30, n.keep = 20, threshold = 0.9,
-                                 permute = FALSE, n.draws = 250, inv.temp = 0.5,
+                                 permute = TRUE, n.draws = 250, inv.temp = 0.5,
                                  ebic.gamma = 0.5,
                                  criterion = c("AIC", "BIC", "AICc", "exBIC"),
                                  weights = NULL, n.cores = 1L, cor.check = NULL,

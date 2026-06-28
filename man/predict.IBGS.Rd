@@ -9,7 +9,7 @@
 \arguments{
 \item{object}{an \code{"IBGS"} result from \code{\link{glmGibbs}},
 \code{\link{glmIBGS}}, \code{\link{coxGibbs}}, \code{\link{coxIBGS}},
-\code{\link{rlmGibbs}} or \code{\link{rlmIBGS}}}
+\code{\link{lmeGibbs}} or \code{\link{lmeIBGS}}}
 
 \item{newdata}{new predictor data (a matrix or data frame with the original
 predictor columns).  When \code{NULL} the model-averaged fitted values on the
@@ -27,11 +27,11 @@ Bayesian-style model averaging) instead of using a single model.}
 \item{model}{which retained model to use when \code{average = FALSE}
 (1 = the best by criterion).}
 
-\item{group.new}{for an \code{rlm} fit, the grouping factor of the new data;
+\item{group.new}{for an \code{lme} fit, the grouping factor of the new data;
 when supplied the matching model-averaged random-intercept BLUP is added
 (conditional prediction).  Unseen groups contribute 0 (the marginal mean).}
 
-\item{Z.new}{for a general \code{rlm} fit, the random-effects design of the
+\item{Z.new}{for a general \code{lme} fit, the random-effects design of the
 new data; when supplied \code{Z.new \%*\% b_hat} is added.}
 
 \item{...}{ignored}
@@ -40,7 +40,7 @@ new data; when supplied \code{Z.new \%*\% b_hat} is added.}
 a numeric vector of predictions: the response scale for the GLM families
 (probabilities in [0, 1] for binomial), the relative risk
 \code{exp(x*beta)} for cox, and the fixed-effect mean -- optionally plus the
-random-effect BLUP -- for rlm.
+random-effect BLUP -- for lme.
 }
 \description{
 Model-averaged prediction (the default) or single-model prediction on new data.

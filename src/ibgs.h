@@ -103,7 +103,7 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
  * cross-product Gy.  active[0..q-1] indexes the q active columns; yty = y'Wy.
  * Sbuf (>= q*q) and bbuf (>= q) are caller scratch.  Returns RSS (>= 1e-12) or a
  * negative value if the active sub-block is not positive definite (collinear).
- * Shared with the rlm whitened-OLS sampler (rlm.c).
+ * Shared with the lme whitened-OLS sampler (lme.c).
  */
 double rsschol(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf);
 
@@ -221,7 +221,7 @@ int  cxwsallc(cxwst *ws, int capt, int n);
 void cxwsfree(cxwst *ws);
 
 /*
- * rlm sampler workspace.  The rlm fit is whitened OLS (no IRLS and no warm-start
+ * lme sampler workspace.  The lme fit is whitened OLS (no IRLS and no warm-start
  * state), so it needs only the gaussian Gram buffers, sized for a design of up
  * to capt = 1 + p1 + p2 columns over n rows.
  */
@@ -234,12 +234,12 @@ typedef struct {
     double *G, *Gy, *Sbuf, *bbuf;  /* whitened Gram path */
     int    *bcols, *s0;  /* screening: gathered column ids / start model */
     double *fr, *Xb;     /* screening: block freqs / gathered block design */
-} rlwst;
+} lmewst;
 
-/* Allocate (R_Calloc, main thread) / free an rlm workspace for up to capt
+/* Allocate (R_Calloc, main thread) / free an lme workspace for up to capt
  * columns over n rows.  On out of memory R_Calloc raises an R error. */
-int  rlwsallc(rlwst *ws, int capt, int n);
-void rlwsfree(rlwst *ws);
+int  lmewsallc(lmewst *ws, int capt, int n);
+void lmewsfree(lmewst *ws);
 
 /* ============================================================================
  * Metropolis-within-Gibbs samplers (one step runner per family).
@@ -306,10 +306,10 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
 
 /*
  * The linear-mixed-model fixed-effect Metropolis-within-Gibbs sampler
- * (rlm.c).  With the random structure fixed, the marginal model is
+ * (lme.c).  With the random structure fixed, the marginal model is
  * y ~ N(X beta, V) with V known; whitening by V = L L' (ystar = L^-1 y,
  * Xstar = L^-1 X, istar = L^-1 1) reduces each candidate fit to ordinary least
- * squares on the whitened data, so runrlmgb is the gaussian Gram sampler
+ * squares on the whitened data, so runlmegb is the gaussian Gram sampler
  * (it reuses rsschol) but the intercept is the PROVIDED whitened column
  * `istar` (always included) rather than a constant ones vector, and a constant
  * log|V0| is added to the criterion.
@@ -330,7 +330,7 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
  * 0 = AIC, 1 = BIC, 2 = AICc, 3 = exBIC.  Returns 0 on success, 1 on allocation
  * failure.
  */
-int runrlmgb(const double *ystar, const double *Xstar, const double *istar, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, double ldv0, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, rlwst *ws);
+int runlmegb(const double *ystar, const double *Xstar, const double *istar, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, double ldv0, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, lmewst *ws);
 
 /* ============================================================================
  * Shared search scratch: types, helpers, and the per-search workspace used by
@@ -370,14 +370,14 @@ int summnm(const double *oic, int lenf, int n_req);
 int summtab(const double *oic, int lenf, int nm_in, double *micic, int *cnt, int *rep, int *nm);
 
 /* Per-family summarizers: refit the best nm models from the recorded run and
- * write coef (nr x nm_in, full length: glm/rlm nr = p+1 with intercept row 0,
+ * write coef (nr x nm_in, full length: glm/lme nr = p+1 with intercept row 0,
  * cox nr = p), model.ic (micout) and model.freq (frqout), setting *nm.  omat is
  * the column-major lenf x (1+ps) indicator matrix; xs[c] is the 0-based original
  * column of omat predictor column c+1.  Each returns 0, or 1 on allocation
  * failure. */
 int glmsumm(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int family, int nm_in, double *coef, double *micout, double *frqout, int *nm);
 int coxsumm(const double *time, const int *status, const double *pw, const double *X, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int nm_in, double *coef, double *micout, double *frqout, int *nm);
-int rlmsumm(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int nm_in, double *coef, double *micout, double *frqout, int *nm);
+int lmesumm(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int nm_in, double *coef, double *micout, double *frqout, int *nm);
 
 /*
  * Per-search workspace: every scratch buffer one *ibgs* search call needs,
@@ -517,14 +517,14 @@ int coxgbsam(const double *time, const int *status, const double *X, const doubl
 void coxcoef(const double *time, const int *status, const double *pw, const double *X, int n, int q, double *bout, double *m2pll);
 
 /*
- * rlm iterated block Gibbs search (rlm.c), split into select + fill phases (see
+ * lme iterated block Gibbs search (lme.c), split into select + fill phases (see
  * ibgssel/ibgsrun).  The data are whitened in R (ystar, Xstar, istar; V = L L'),
  * so the fits are ordinary least squares on the whitened design; ldv0 = log|V0|.
  *
- * rlmibgsel -- refinement + final screening; reports the candidate set:
+ * lmeibgsel -- refinement + final screening; reports the candidate set:
  *   xs    : OUTPUT int[p] chosen 0-based columns (first *ps used).
  *   *ps   : OUTPUT number of selected columns (<= p); *lenf : sweeps (= 4*len).
- * rlmibgrun -- final long whitened-OLS Gibbs run writing directly into caller
+ * lmeibgrun -- final long whitened-OLS Gibbs run writing directly into caller
  * buffers:
  *   omat  : OUTPUT int[lenf * (1 + ps)] indicator matrix (column-major).
  *   oic   : OUTPUT double[lenf] per-sample criterion.
@@ -532,18 +532,18 @@ void coxcoef(const double *time, const int *status, const double *pw, const doub
  *   sel   : OUTPUT int[ps] 1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int rlmibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xs, int *ps, int *lenf);
-int rlmibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel);
+int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xs, int *ps, int *lenf);
+int lmeibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel);
 
 /*
- * Standalone (non-block) rlm sampler over all p whitened predictors, capped at
+ * Standalone (non-block) lme sampler over all p whitened predictors, capped at
  * nvars.  Writes into caller-provided buffers (mbuf: int[len*(1+p)],
  * sicbuf: double[len], vpbuf: double[p]).  Returns 0 on success, 1 on failure.
  */
-int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf);
+int lmegbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf);
 
 /*
- * Single-model whitened-OLS coefficient refit behind the rlm_coef() .Call
+ * Single-model whitened-OLS coefficient refit behind the lme_coef() .Call
  * wrapper.  Solves the normal equations (D'D) beta = D'ystar by Cholesky
  * (cholsolv) for the whitened design.
  *   ystar  : the whitened response L^-1 y (length n).
@@ -556,7 +556,7 @@ int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int 
  * Returns nothing (writes into bout).  Allocates its Gram/solve scratch with
  * R_Calloc/R_Free (main thread only); does no SEXP handling.
  */
-void rlmcoef(const double *ystar, const double *D, int n, int q, double *bout);
+void lmecoef(const double *ystar, const double *D, int n, int q, double *bout);
 
 /* ============================================================================
  * Convergence diagnostics of the recorded information-criterion sequence
