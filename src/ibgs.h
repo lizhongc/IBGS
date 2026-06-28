@@ -558,4 +558,35 @@ int rlmgbsam(const double *ystar, const double *Xstar, const double *istar, int 
  */
 void rlmcoef(const double *ystar, const double *D, int n, int q, double *bout);
 
+/* ============================================================================
+ * Convergence diagnostics of the recorded information-criterion sequence
+ * (ic.trace), implemented in diag.c.  Each routine works on one plain double
+ * array; the .Call shim ibgs_diag (R_export.c) marshals the results to R.  The
+ * formulas mirror coda and R's stats::ar.yw, so the package reports the standard
+ * diagnostics without depending on coda.
+ * ========================================================================== */
+
+/* Lagged autocorrelations out[0..lag_max] (out[0] = 1); like stats::acf. */
+void acf_vec(const double *x, int n, int lag_max, double *out);
+
+/* Spectral density at zero frequency via an AR(aic) fit; coda::spectrum0.ar.
+ * *order (if non-NULL) receives the selected AR order. */
+double spectrum0_ar(const double *x, int n, int *order);
+
+/* Effective sample size n*var(x)/spectrum0.ar(x); coda::effectiveSize. */
+double ess_val(const double *x, int n);
+
+/* Geweke z comparing the first frac1 and last frac2 of the chain;
+ * coda::geweke.diag. */
+double geweke_z(const double *x, int n, double frac1, double frac2);
+
+/* Split-chain (m segments) univariate Gelman-Rubin PSRF point estimate (*psrf)
+ * and 97.5% upper limit (*upper); coda::gelman.diag. */
+void gelman1d(const double *x, int n, int m, double *psrf, double *upper);
+
+/* Evolving shrink factor for gelman.plot: gelman1d over growing prefixes.
+ * Writes *nb usable breakpoints into iters/med/upper (caller-sized to nbin). */
+void gelman_shrink(const double *x, int n, int m, int nbin,
+                   double *iters, double *med, double *upper, int *nb);
+
 #endif /* IBGS_IBGS_H */

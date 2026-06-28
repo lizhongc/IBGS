@@ -1,8 +1,8 @@
-\name{plotIchart}
-\alias{plotIchart}
-\title{I-chart for the generated information-criterion sequence}
+\name{plotICtrace}
+\alias{plotICtrace}
+\title{Trace plot of the information-criterion sequence}
 \usage{
-plotIchart(
+plotICtrace(
   result,
   col = NULL,
   highlight = NULL,
@@ -27,13 +27,10 @@ palette (grey)}
 \item{...}{further graphical parameters passed to \code{\link{plot}}}
 }
 \value{
-invisibly, a list with the two control limits and the best value
+invisibly, a list with the best value and the generation that reached it
 }
 \description{
-Plots the model selection criterion at each Gibbs generation together with two
-upper control limits (UCLs): one estimated from the first half of the run
-(the shaded region) and one from the whole run.  Once the trace settles below
-the limits the sampler has stabilised.  The best (lowest) criterion value
-reached is highlighted, and a horizontal guide marks the best retained model's
-criterion.
+Plots the model selection criterion at each Gibbs generation.  The best
+(lowest) criterion value reached is highlighted and a horizontal guide marks the
+best retained model's criterion, so the minimal information criterion stands out.
 }

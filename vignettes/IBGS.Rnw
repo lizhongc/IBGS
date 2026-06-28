@@ -59,7 +59,7 @@ head(coef(fit))
 @
 
 The diagnostic plots show the marginal inclusion probabilities, the visit
-frequency of the top models, and an I-chart of the criterion sequence.  Here is
+frequency of the top models, and a trace of the criterion sequence.  Here is
 the inclusion-probability plot:
 
 \begin{center}

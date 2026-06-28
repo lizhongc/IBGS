@@ -22,7 +22,7 @@ Methods are described in Chen (2022),
   sampler (`*Gibbs`).
 - **Model averaging built in:** `predict()`, `fitted()` and `coef()` average
   over the retained top models with smooth-SIC (BMA-style) weights.
-- **Diagnostics:** an I-chart of the criterion trace, marginal inclusion
+- **Diagnostics:** a trace of the criterion sequence, marginal inclusion
   probabilities, and top-model visit frequencies.
 - **Scales to large p:** the per-generation indicator matrix is summarized in C,
   so the fitted object stays compact even for thousands of predictors.
@@ -57,7 +57,7 @@ y <- rowSums(x[, 1:3]) + rnorm(100)
 fit <- glmIBGS(y, x, criterion = "BIC")
 fit                       # concise overview
 summary(fit)              # selected-variable and top-model tables
-plot(fit)                 # I-chart, marginal probabilities, model frequencies
+plot(fit)                 # criterion trace, marginal probabilities, model frequencies
 
 coef(fit)                 # best model; coef(fit, average = TRUE) to average
 predict(fit, x[1:5, ])    # model-averaged predictions on new data
@@ -74,7 +74,7 @@ fitted(fit)               # model-averaged fitted values
 
 Each sampler returns an object of class `"IBGS"` with `print()`, `summary()`,
 `plot()`, `coef()`, `predict()` and `fitted()` methods. The plotting helpers
-`plotIchart()`, `plotVarProb()` and `plotModelFreq()` are also exported for
+`plotICtrace()`, `plotVarProb()` and `plotModelFreq()` are also exported for
 drawing the individual diagnostics.
 
 Common arguments include `criterion` (selection criterion), `n.models` (number

@@ -29,11 +29,11 @@
 #   n.keep     the number of selected predictors in the first step, default 20
 #   threshold  the threshold to select the important predictors, default 0.9
 #   permute    the coordinate visiting order within each Gibbs sweep. TRUE
-#              (default) draws a fresh random permutation each sweep, so every
+#              draws a fresh random permutation each sweep, so every
 #              predictor is updated exactly once per sweep (without
-#              replacement); FALSE uses a fixed in-order systematic sweep.
+#              replacement); FALSE (default) uses a fixed in-order systematic sweep.
 #   n.draws    the half number of generated samples, default is 250
-#   inv.temp the tuning parameter, default is 1
+#   inv.temp the tuning parameter, default is 0.5
 #   ebic.gamma the parameter for extended BIC, default is 0.5
 #   criterion  the model selection criterion: AIC, BIC, AICc or exBIC
 #   n.cores    the number of OpenMP threads for the block screening
@@ -58,8 +58,8 @@
 #   Has print, summary, coef and plot methods.
 rlmIBGS <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
                     n.refine = 3, n.models = 10, block.size = 30, n.keep = 20,
-                    threshold = 0.9, permute = TRUE, n.draws = 250,
-                    inv.temp = 1, ebic.gamma = 0.5,
+                    threshold = 0.9, permute = FALSE, n.draws = 250,
+                    inv.temp = 0.5, ebic.gamma = 0.5,
                     criterion = c("AIC", "BIC", "AICc", "exBIC"), n.cores = 1L,
                     cor.check = NULL, start = c("null", "full")){
   criterion <- match.arg(criterion)

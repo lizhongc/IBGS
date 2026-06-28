@@ -14,6 +14,8 @@ extern SEXP rlm_ibgs_glm(SEXP ystar_, SEXP Xstar_, SEXP istar_, SEXP niter_, SEX
 
 extern SEXP rlm_gibbs_glm(SEXP ystar_, SEXP Xstar_, SEXP istar_, SEXP nvars_, SEXP perm_, SEXP start_, SEXP len_, SEXP k_, SEXP gamma_, SEXP info_, SEXP logdetV0_, SEXP nmodels_);
 
+extern SEXP ibgs_diag(SEXP ic_, SEXP nseg_, SEXP lagmax_, SEXP nbin_);
+
 static const R_CallMethodDef CallEntries[] = {
     {"ibgs_glm",          (DL_FUNC) &ibgs_glm,          17},
     {"gibbs_sampler_glm", (DL_FUNC) &gibbs_sampler_glm, 13},
@@ -21,6 +23,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"cox_gibbs_glm",     (DL_FUNC) &cox_gibbs_glm,     12},
     {"rlm_ibgs_glm",      (DL_FUNC) &rlm_ibgs_glm,      16},
     {"rlm_gibbs_glm",     (DL_FUNC) &rlm_gibbs_glm,     12},
+    {"ibgs_diag",         (DL_FUNC) &ibgs_diag,          4},
     {NULL, NULL, 0}
 };
 

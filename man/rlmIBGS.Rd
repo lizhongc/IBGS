@@ -14,9 +14,9 @@ rlmIBGS(
   block.size = 30,
   n.keep = 20,
   threshold = 0.9,
-  permute = TRUE,
+  permute = FALSE,
   n.draws = 250,
-  inv.temp = 1,
+  inv.temp = 0.5,
   ebic.gamma = 0.5,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   n.cores = 1L,
@@ -50,9 +50,9 @@ used with \code{Z}}
 \item{threshold}{the threshold to select the important predictors, default 0.9}
 
 \item{permute}{the coordinate visiting order within each Gibbs sweep.
-\code{TRUE} (default) draws a fresh random permutation each sweep, so every
+\code{TRUE} draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
-\code{FALSE} uses a fixed in-order systematic sweep.}
+\code{FALSE} (default) uses a fixed in-order systematic sweep.}
 
 \item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
 starts from the empty model (intercept only) and grows, avoiding the
@@ -62,7 +62,7 @@ behaviour).}
 
 \item{n.draws}{the half number of generated samples, default is 250}
 
-\item{inv.temp}{the tuning parameter, default is 1}
+\item{inv.temp}{the tuning parameter, default is 0.5}
 
 \item{ebic.gamma}{the parameter for extended BIC, default is 0.5}
 

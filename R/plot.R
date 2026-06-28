@@ -1,16 +1,14 @@
-# Standalone diagnostic plots for an "IBGS" result: the I-chart of the criterion
-# sequence, the visit frequency of the top models, and the marginal inclusion
-# probability of the top covariates.  (The plot.IBGS S3 method that dispatches to
-# these lives in methods.R.)
+# Standalone diagnostic plots for an "IBGS" result: the trace of the criterion
+# sequence, the visit frequency of the top models, the marginal inclusion
+# probability of the top covariates, the Gelman-Rubin shrink factor, and the
+# autocorrelation of the criterion trace.  (The plot.IBGS S3 method that
+# dispatches to these lives in methods.R.)
 
-# I-chart for the generated information-criterion sequence
+# Trace plot of the generated information-criterion sequence
 #
-# Plots the model selection criterion at each Gibbs generation together with two
-# upper control limits (UCLs): one estimated from the first half of the run
-# (the shaded region) and one from the whole run.  Once the trace settles below
-# the limits the sampler has stabilised.  The best (lowest) criterion value
-# reached is highlighted, and a horizontal guide marks the best retained model's
-# criterion.
+# Plots the model selection criterion at each Gibbs generation.  The best
+# (lowest) criterion value reached is highlighted and a horizontal guide marks
+# the best retained model's criterion, so the minimal IC stands out.
 #
 # Arguments:
 #   result      an "IBGS" result from one of the samplers
@@ -22,82 +20,52 @@
 #   legend      draw an explanatory legend, default TRUE
 #   ...         further graphical parameters passed to plot()
 #
-# Value: invisibly, a list with the two control limits and the best value
-plotIchart <- function(result, col = NULL, highlight = NULL,
-                       running.min = FALSE, legend = TRUE, ...){
+# Value: invisibly, a list with the best value and the generation that reached it
+plotICtrace <- function(result, col = NULL, highlight = NULL,
+                        running.min = FALSE, legend = TRUE, ...){
   pal <- .ibgs.cols()
   if (is.null(col))       col       <- pal$trace
-  if (is.null(highlight)) highlight <- pal$highlight
+  if (is.null(highlight)) highlight <- "blue"   # best draw + best-so-far line
 
   v   <- result$ic.trace      # information criterion of each generation
   n   <- length(v)
-  h   <- floor(n / 2)         # first/second-half split
   crit <- result$criterion
 
-  # Upper control limit (UCL) for the criterion trace.  It is anchored at the
-  # best (lowest) value `lo` reached and reaches up by sqrt(10) times the
-  # root-mean-square deviation of the trace from that anchor,
-  #     UCL = lo + sqrt(10) * sqrt( var(z) + (mean(z) - lo)^2 ).
-  # The bracket is E[(z - lo)^2] (spread about lo, not about the mean), so a
-  # trace that has settled near its minimum gives a tight limit; sqrt(10) ~ 3.16
-  # plays the role of a "3-sigma" control band.  Computing it on the first half
-  # vs. the whole run shows whether the sampler has stabilised.
-  ucl <- function(z){
-    lo <- min(z)
-    lo + sqrt(10) * sqrt(sd(z)^2 + (mean(z) - lo)^2)
-  }
-  ucl.half <- ucl(v[seq_len(h)])    # limit from the first half only
-  ucl.full <- ucl(v)                # limit from the whole run
   i.best   <- which.min(v)          # generation achieving the best criterion
   ic.best  <- if (!is.null(result$model.ic)) min(result$model.ic) else v[i.best]
-
-  # reserve room on the right for the outside legend (restored on exit)
-  if (isTRUE(legend)) {
-    op <- par(mar = par("mar") + c(0, 0, 0, 6)); on.exit(par(op))
-  }
 
   # default a robust y-range so early-iteration spikes do not flatten the settled
   # region into a flat line; a user-supplied ylim (via ...) still wins
   dots <- list(...)
   if (is.null(dots$ylim))
-    dots$ylim <- c(min(v), max(stats::quantile(v, 0.98), ucl.half))
+    dots$ylim <- c(min(v), max(stats::quantile(v, 0.98)))
   do.call(plot, c(list(seq_len(n), v, type = "l", col = col,
                        xlab = "Generation", ylab = sprintf("%s value", crit),
-                       main = sprintf("I-chart of the %s sequence", crit)),
+                       main = sprintf("Trace of the %s sequence", crit)),
                   dots))
-  # light shaded band over the first half, which the (first-half) UCL is built on
-  usr <- par("usr")
-  rect(usr[1], usr[3], h, usr[4], col = pal$burnin, border = NA)
-  lines(seq_len(n), v, col = col)                      # redraw trace over the band
-  abline(h = ucl.half, col = pal$limit1, lty = 3, lwd = 2)
-  abline(h = ucl.full, col = pal$limit2, lty = 2, lwd = 2)
-  abline(h = ic.best,  col = pal$selected, lty = 1, lwd = 1)  # best model criterion
+  abline(h = ic.best, col = "red", lty = 1, lwd = 1)   # best model criterion
   if (isTRUE(running.min))
     lines(seq_len(n), cummin(v), col = highlight, lwd = 2)
   points(i.best, v[i.best], pch = 19, col = highlight, cex = 1.3)
 
   if (isTRUE(legend)) {
-    items <- c(sprintf("%s trace", crit), "UCL (first half)", "UCL (whole run)",
-               "burn-in (first half)", sprintf("best model = %.2f", ic.best),
+    items <- c(sprintf("%s trace", crit),
+               sprintf("best model = %.2f", ic.best),
                sprintf("best draw = %.2f", v[i.best]))
-    cols  <- c(col, pal$limit1, pal$limit2, "grey70", pal$selected, highlight)
-    ltys  <- c(1, 3, 2, NA, 1, NA)
-    pchs  <- c(NA, NA, NA, 22, NA, 19)
-    lwds  <- c(1, 2, 2, NA, 1, NA)
-    ptbg  <- c(NA, NA, NA, pal$burnin, NA, NA)
+    cols  <- c(col, "red", highlight)
+    ltys  <- c(1, 1, NA)
+    pchs  <- c(NA, NA, 19)
+    lwds  <- c(1, 1, NA)
     if (isTRUE(running.min)) {
       items <- c(items, "best so far"); cols <- c(cols, highlight)
       ltys  <- c(ltys, 1); pchs <- c(pchs, NA); lwds <- c(lwds, 2)
-      ptbg  <- c(ptbg, NA)
     }
-    # placed just outside the right edge of the plotting region (xpd = NA)
-    legend(x = usr[2] + 0.02 * diff(usr[1:2]), y = usr[4],
-           legend = items, col = cols, lty = ltys, pch = pchs, lwd = lwds,
-           pt.bg = ptbg, bty = "n", cex = 0.8, xpd = NA)
+    # top-right corner inside the plotting region, on a white background
+    legend("topright", legend = items, col = cols, lty = ltys, pch = pchs,
+           lwd = lwds, cex = 0.8, bg = "white")
   }
 
-  invisible(list(ucl.half = ucl.half, ucl.full = ucl.full,
-                 best = v[i.best], best.at = i.best))
+  invisible(list(best = v[i.best], best.at = i.best))
 }
 
 # Plot the visit frequency of the top selected models
@@ -134,7 +102,7 @@ plotModelFreq <- function(result, n.models = result$n.models, col = NULL,
   }
 
   cols <- rep(col, n.models)
-  cols[1] <- pal$highlight                    # best model stands out
+  cols[1] <- "red"                            # best model stands out
   bp <- barplot(freq, xlab = "Model (ranked by criterion)",
                 ylab = "Visit frequency", col = cols, border = NA,
                 ylim = c(0, max(freq) * 1.15), ...)
@@ -145,11 +113,11 @@ plotModelFreq <- function(result, n.models = result$n.models, col = NULL,
 
   if (isTRUE(cumulative)) {
     cum <- cumsum(freq) / sum(result$model.freq)   # share of all recorded visits
-    lines(bp, cum * max(freq), col = pal$limit2, lwd = 2)
-    points(bp, cum * max(freq), pch = 19, col = pal$limit2, cex = 0.7)
+    lines(bp, cum * max(freq), col = "blue", lwd = 2)
+    points(bp, cum * max(freq), pch = 19, col = "blue", cex = 0.7)
     axis(4, at = pretty(c(0, 1)) * max(freq), labels = pretty(c(0, 1)),
-         col.axis = pal$limit2, col = pal$limit2)
-    mtext("cumulative frequency", side = 4, line = 2.5, col = pal$limit2,
+         col.axis = "blue", col = "blue")
+    mtext("cumulative frequency", side = 4, line = 2.5, col = "blue",
           cex = 0.8)
   }
 
@@ -187,29 +155,95 @@ plotVarProb <- function(result, n.vars = 20, col = NULL, lwd = 2, side = 1,
   v.name  <- result$var.names[v.order]
 
   sel    <- v.freq > result$threshold              # selected (above threshold)
-  colors <- ifelse(sel, pal$selected, col)
+  colors <- ifelse(sel, "blue", col)
   xx     <- seq_len(n.vars)
-
-  # reserve room on the right for the colour key (restored on exit)
-  op <- par(mar = par("mar") + c(0, 0, 0, 7)); on.exit(par(op))
 
   plot(xx, v.freq, xlab = "", ylab = "Marginal inclusion probability",
        xaxt = "n", main = "", type = "n", ylim = c(0, 1))
   segments(xx, 0, xx, v.freq, col = colors, lwd = lwd, lend = 1)   # stems
   points(xx, v.freq, pch = 19, col = colors, cex = 0.8)            # heads
-  abline(h = result$threshold, col = pal$limit1, lty = 2, lwd = 1.5)  # threshold
-  # right-justified just above the line so it never clips the panel edge
+  abline(h = result$threshold, col = "red", lty = 2, lwd = 1.5)    # threshold
+  # threshold label on the right, just above the line
   text(n.vars + 0.4, result$threshold,
        labels = sprintf("threshold = %.2g", result$threshold),
-       adj = c(1, -0.4), cex = 0.75, col = pal$limit1, xpd = NA)
-  # predictor names under the axis; selected ones in the highlight colour
+       adj = c(1, -0.4), cex = 0.75, col = "red", xpd = NA)
+  # predictor names under the axis; selected ones in blue
   mtext(v.name, side = side, line = line, at = xx, las = las, cex = cex,
-        col = ifelse(sel, pal$selected, pal$trace))
-  # colour key just outside the right edge of the plotting region
-  usr <- par("usr")
-  legend(x = usr[2] + 0.02 * diff(usr[1:2]), y = usr[4],
-         legend = c("selected (> threshold)", "not selected"),
-         col = c(pal$selected, col), pch = 19, bty = "n", cex = 0.8, xpd = NA)
+        col = ifelse(sel, "blue", pal$trace))
+  # colour key under the threshold line, right-aligned, on a white background
+  legend(x = n.vars + 0.4, y = result$threshold-0.02, xjust = 1, yjust = 1,
+         legend = c("selected", "not selected"),
+         col = c("blue", col), pch = 19, cex = 0.8, bg = "white",bty = "n", xpd = NA)
 
   invisible(stats::setNames(v.freq, v.name))
+}
+
+# Gelman-Rubin shrink-factor plot for the criterion trace
+#
+# Plots the evolving Gelman-Rubin potential scale reduction factor (R-hat) of
+# the criterion trace as the run lengthens, computed from the single chain split
+# into equal contiguous segments (result$convergence$shrink).  The median and
+# the 97.5% upper limit are drawn together with a horizontal guide at 1 (perfect
+# mixing) and at 1.1 (the usual convergence rule of thumb): once both curves
+# settle below ~1.1 the sampler has stabilised.
+#
+# Arguments:
+#   result an "IBGS" result from one of the samplers
+#   col    colour of the median R-hat curve, default from the package palette
+#   legend draw an explanatory legend, default TRUE
+#   ...    further graphical parameters passed to plot()
+#
+# Value: invisibly, the data.frame of shrink-factor values
+plotGelman <- function(result, col = NULL, legend = TRUE, ...){
+  pal <- .ibgs.cols()
+  if (is.null(col)) col <- "blue"        # median shrink-factor curve
+
+  sh <- result$convergence$shrink
+  if (is.null(sh) || nrow(sh) == 0)
+    stop("no Gelman shrink-factor data in this fit (chain too short)")
+
+  ylim <- range(1, sh$median, sh$upper, na.rm = TRUE)
+  plot(sh$iter, sh$median, type = "l", col = col, lwd = 2, ylim = ylim,
+       xlab = "Generation", ylab = "shrink factor",
+       main = "Gelman-Rubin shrink factor", ...)
+  lines(sh$iter, sh$upper, col = "red", lty = 2, lwd = 2)   # 97.5% upper limit
+  abline(h = 1,   col = pal$trace,     lty = 1)
+  abline(h = 1.1, col = pal$highlight, lty = 3, lwd = 1.5)
+  if (isTRUE(legend))
+    legend("topright", legend = c("median", "97.5%", "R-hat = 1.1"),
+           col = c(col, "red", pal$highlight), lty = c(1, 2, 3),
+           lwd = c(2, 2, 1.5), cex = 0.8, bg = "white", bty = "n")
+
+  invisible(sh)
+}
+
+# Autocorrelation plot for the criterion trace
+#
+# Draws the lagged autocorrelation of the criterion trace
+# (result$convergence$autocorr) as a stick plot.  A trace that mixes well decays
+# to zero quickly; persistent high autocorrelation signals a slowly-mixing chain
+# and a small effective sample size.
+#
+# Arguments:
+#   result an "IBGS" result from one of the samplers
+#   col    colour of the sticks, default from the package palette
+#   ...    further graphical parameters passed to plot()
+#
+# Value: invisibly, the named vector of autocorrelations
+plotAutocorr <- function(result, col = NULL, ...){
+  pal <- .ibgs.cols()
+  if (is.null(col)) col <- pal$trace
+
+  ac <- result$convergence$autocorr
+  if (is.null(ac))
+    stop("no autocorrelation data in this fit")
+  lags <- as.integer(names(ac))
+
+  plot(lags, ac, type = "h", col = col, lwd = 2,
+       xlab = "Lag", ylab = "Autocorrelation",
+       main = sprintf("Autocorrelation of the %s trace", result$criterion),
+       ylim = range(0, ac, na.rm = TRUE), ...)
+  abline(h = 0, col = pal$trace)
+
+  invisible(ac)
 }

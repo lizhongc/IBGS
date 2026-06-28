@@ -486,3 +486,97 @@ SEXP rlm_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start
     UNPROTECT(10);
     return out;
 }
+
+/* ==========================================================================
+ * Convergence diagnostics of the ic.trace sequence (computation in diag.c).
+ * These run on the criterion value recorded at each generation; the kernels are
+ * self-contained reimplementations of the coda diagnostics, so the package adds
+ * no R dependency.
+ * ======================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* .Call: all convergence diagnostics of one ic.trace vector.          */
+/*   ic     double[len] the recorded per-generation criterion sequence  */
+/*   nseg   int    number of contiguous segments for the split-chain    */
+/*          Gelman-Rubin diagnostic                                     */
+/*   lagmax int    highest autocorrelation lag (clamped to len-1)       */
+/*   nbin   int    number of breakpoints for the gelman.plot shrink data */
+/* Returns list(gelman[psrf, upper], geweke, ess, acf, acf.lag,         */
+/*   shrink = list(iter, median, upper)).                               */
+/* ------------------------------------------------------------------ */
+SEXP ibgs_diag(SEXP ic, SEXP nseg, SEXP lagmax, SEXP nbin)
+{
+    SEXP ic2 = PROTECT(coerceVector(ic, REALSXP));
+    int len = LENGTH(ic2);
+    const double *x = REAL(ic2);
+    int m = asInteger(nseg);
+    int lag = asInteger(lagmax);
+    int nb_req = asInteger(nbin);
+    if (lag > len - 1) lag = len - 1;
+    if (lag < 0) lag = 0;
+    if (nb_req < 1) nb_req = 1;
+
+    /* Gelman-Rubin, Geweke, effective size */
+    double psrf = NA_REAL, upper = NA_REAL;
+    gelman1d(x, len, m, &psrf, &upper);
+    SEXP gel = PROTECT(allocVector(REALSXP, 2));
+    REAL(gel)[0] = psrf;
+    REAL(gel)[1] = upper;
+    double gz = geweke_z(x, len, 0.1, 0.5);
+    double ess = ess_val(x, len);
+
+    /* autocorrelations and their lags */
+    SEXP acf = PROTECT(allocVector(REALSXP, lag + 1));
+    SEXP acflag = PROTECT(allocVector(INTSXP, lag + 1));
+    acf_vec(x, len, lag, REAL(acf));
+    for (int k = 0; k <= lag; k++) {
+        INTEGER(acflag)[k] = k;
+    }
+
+    /* evolving shrink factor for gelman.plot */
+    double *it = (double *) R_Calloc((size_t) nb_req, double);
+    double *md = (double *) R_Calloc((size_t) nb_req, double);
+    double *up = (double *) R_Calloc((size_t) nb_req, double);
+    int nb = 0;
+    gelman_shrink(x, len, m, nb_req, it, md, up, &nb);
+    SEXP s_it = PROTECT(allocVector(REALSXP, nb));
+    SEXP s_md = PROTECT(allocVector(REALSXP, nb));
+    SEXP s_up = PROTECT(allocVector(REALSXP, nb));
+    if (nb > 0) {
+        memcpy(REAL(s_it), it, (size_t) nb * sizeof(double));
+        memcpy(REAL(s_md), md, (size_t) nb * sizeof(double));
+        memcpy(REAL(s_up), up, (size_t) nb * sizeof(double));
+    }
+    R_Free(up);
+    R_Free(md);
+    R_Free(it);
+
+    SEXP shrink = PROTECT(allocVector(VECSXP, 3));
+    SET_VECTOR_ELT(shrink, 0, s_it);
+    SET_VECTOR_ELT(shrink, 1, s_md);
+    SET_VECTOR_ELT(shrink, 2, s_up);
+    SEXP shnm = PROTECT(allocVector(STRSXP, 3));
+    SET_STRING_ELT(shnm, 0, mkChar("iter"));
+    SET_STRING_ELT(shnm, 1, mkChar("median"));
+    SET_STRING_ELT(shnm, 2, mkChar("upper"));
+    setAttrib(shrink, R_NamesSymbol, shnm);
+
+    SEXP out = PROTECT(allocVector(VECSXP, 6));
+    SET_VECTOR_ELT(out, 0, gel);
+    SET_VECTOR_ELT(out, 1, ScalarReal(gz));
+    SET_VECTOR_ELT(out, 2, ScalarReal(ess));
+    SET_VECTOR_ELT(out, 3, acf);
+    SET_VECTOR_ELT(out, 4, acflag);
+    SET_VECTOR_ELT(out, 5, shrink);
+    SEXP nms2 = PROTECT(allocVector(STRSXP, 6));
+    SET_STRING_ELT(nms2, 0, mkChar("gelman"));
+    SET_STRING_ELT(nms2, 1, mkChar("geweke"));
+    SET_STRING_ELT(nms2, 2, mkChar("ess"));
+    SET_STRING_ELT(nms2, 3, mkChar("acf"));
+    SET_STRING_ELT(nms2, 4, mkChar("acf.lag"));
+    SET_STRING_ELT(nms2, 5, mkChar("shrink"));
+    setAttrib(out, R_NamesSymbol, nms2);
+
+    UNPROTECT(11);
+    return out;
+}

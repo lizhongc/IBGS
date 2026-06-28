@@ -60,7 +60,7 @@ test_that("the plot methods run without error", {
   pdf(tempfile())
   on.exit(dev.off())
   expect_no_error(plot(fit))
-  expect_no_error(plotIchart(fit))
+  expect_no_error(plotICtrace(fit))
   expect_no_error(plotModelFreq(fit))
   expect_no_error(plotVarProb(fit))
 })

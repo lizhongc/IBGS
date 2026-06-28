@@ -10,9 +10,9 @@ glmIBGS(
   block.size = 30,
   n.keep = 20,
   threshold = 0.9,
-  permute = TRUE,
+  permute = FALSE,
   n.draws = 250,
-  inv.temp = 1,
+  inv.temp = 0.5,
   ebic.gamma = 0.5,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   family = c("gaussian", "binomial", "poisson"),
@@ -20,7 +20,7 @@ glmIBGS(
   n.cores = 1L,
   cor.check = NULL,
   start = c("null", "full"),
-  fast = FALSE
+  fast = TRUE
 )
 }
 \arguments{
@@ -39,9 +39,9 @@ glmIBGS(
 \item{threshold}{the threshold to select the important predictors in second step, default is 0.9}
 
 \item{permute}{the coordinate visiting order within each Gibbs sweep.
-\code{TRUE} (default) draws a fresh random permutation each sweep, so every
+\code{TRUE} draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
-\code{FALSE} uses a fixed in-order systematic sweep.}
+\code{FALSE} (default) uses a fixed in-order systematic sweep.}
 
 \item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
 starts from the empty model (intercept only; no covariates for the Cox model)
@@ -50,8 +50,8 @@ and grows, avoiding the ill-conditioned full-model start where the criterion
 (the previous behaviour).}
 
 \item{fast}{for the binomial/poisson families only, a speed/approximation
-trade-off in the iterative (IRLS) fit. \code{FALSE} (default) fits every
-candidate model to full convergence. \code{TRUE} scores each single-coordinate
+trade-off in the iterative (IRLS) fit. \code{FALSE} fits every
+candidate model to full convergence. \code{TRUE} (default) scores each single-coordinate
 proposal with one warm-started IRLS step and re-fits only the accepted models to
 convergence, so the recorded criteria stay exact but the accept/reject decision
 uses an approximate score; much faster when the iterative fit dominates the run.
@@ -59,7 +59,7 @@ Ignored for the gaussian family (a direct, non-iterative fit).}
 
 \item{n.draws}{the half number of generated samples, default is 250}
 
-\item{inv.temp}{the tuning parameter, default is 1}
+\item{inv.temp}{the tuning parameter, default is 0.5}
 
 \item{ebic.gamma}{the parameter for extended BIC, default is 0.5}
 

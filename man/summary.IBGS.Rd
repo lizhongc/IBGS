@@ -16,7 +16,10 @@
 }
 \value{
 invisibly, an object of class \code{"summary.IBGS"} with the selected
-  variable table and the top-model table
+  variable table, the top-model table and the convergence diagnostics of the
+  criterion trace (Gelman-Rubin R-hat, Geweke z, effective sample size and
+  lag-1 autocorrelation), which \code{print} displays as a "Convergence
+  diagnostics" block
 }
 \description{
 Tabular summary of an IBGS fit

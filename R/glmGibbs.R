@@ -15,13 +15,13 @@
 #   max.size the maximal number of predictors in a candidate model,
 #            default is ncol(x)
 #   permute  the coordinate visiting order within each Gibbs sweep. TRUE
-#            (default) draws a fresh random permutation each sweep, so every
+#            draws a fresh random permutation each sweep, so every
 #            predictor is updated exactly once per sweep (without replacement);
-#            FALSE uses a fixed in-order systematic sweep.
+#            FALSE (default) uses a fixed in-order systematic sweep.
 #   n.models the number of top selected models, default is 10
 #   threshold the threshold to select the important predictors, default 0.9
 #   n.draws  the half number of generated samples, default is 1000
-#   inv.temp the tuning parameter, default is 1
+#   inv.temp the tuning parameter, default is 0.5
 #   ebic.gamma the parameter for extended BIC, default is 0.5
 #   criterion the selected model selection criterion from AIC, AICc, BIC and exBIC
 #   family   the model family: "gaussian", "binomial" or "poisson"
@@ -38,8 +38,8 @@
 #            full-model start where the criterion (notably AICc) can be
 #            degenerate; "full" starts from the saturated model.
 #   fast     for the binomial/poisson families only, a speed/approximation
-#            trade-off in the iterative (IRLS) fit.  FALSE (default) fits every
-#            candidate model to full convergence.  TRUE scores each
+#            trade-off in the iterative (IRLS) fit.  FALSE fits every
+#            candidate model to full convergence.  TRUE (default) scores each
 #            single-coordinate proposal with a single warm-started IRLS step and
 #            re-fits only the accepted models to convergence, so the recorded
 #            criteria stay exact but the accept/reject decision uses an
@@ -54,13 +54,13 @@
 #   and visit frequency of each top model), ic.trace (the criterion at
 #   every generation) and criterion (the criterion name).  Has
 #   print, summary, coef and plot methods.
-glmGibbs <- function(y, x, max.size = ncol(x), permute = TRUE, n.models = 10,
-                         threshold = 0.9, n.draws = 1000, inv.temp = 1,
+glmGibbs <- function(y, x, max.size = ncol(x), permute = FALSE, n.models = 10,
+                         threshold = 0.9, n.draws = 1000, inv.temp = 0.5,
                          ebic.gamma = 0.5,
                          criterion = c("AIC", "BIC", "AICc", "exBIC"),
                          family = c("gaussian", "binomial", "poisson"),
                          weights = NULL, cor.check = NULL,
-                         start = c("null", "full"), fast = FALSE){
+                         start = c("null", "full"), fast = TRUE){
   criterion <- match.arg(criterion)
   family    <- match.arg(family)
   start     <- match.arg(start)

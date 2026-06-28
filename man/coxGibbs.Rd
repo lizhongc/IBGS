@@ -7,11 +7,11 @@ coxGibbs(
   status,
   x,
   max.size = ncol(x),
-  permute = TRUE,
+  permute = FALSE,
   n.models = 10,
   threshold = 0.9,
   n.draws = 1000,
-  inv.temp = 1,
+  inv.temp = 0.5,
   ebic.gamma = 0.5,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   weights = NULL,
@@ -30,9 +30,9 @@ coxGibbs(
 default is \code{ncol(x)}}
 
 \item{permute}{the coordinate visiting order within each Gibbs sweep.
-\code{TRUE} (default) draws a fresh random permutation each sweep, so every
+\code{TRUE} draws a fresh random permutation each sweep, so every
 predictor is updated exactly once per sweep (without replacement);
-\code{FALSE} uses a fixed in-order systematic sweep.}
+\code{FALSE} (default) uses a fixed in-order systematic sweep.}
 
 \item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
 starts from the empty model (no covariates; the Cox model has no intercept) and
@@ -46,7 +46,7 @@ previous behaviour).}
 
 \item{n.draws}{the half number of generated samples, default is 1000}
 
-\item{inv.temp}{the tuning parameter, default is 1}
+\item{inv.temp}{the tuning parameter, default is 0.5}
 
 \item{ebic.gamma}{the parameter for extended BIC, default is 0.5}
 

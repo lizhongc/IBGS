@@ -1,4 +1,22 @@
-# IBGS 1.0.1
+# IBGS 1.0.2
+
+## Breaking changes
+
+* `plotIchart()` is renamed `plotICtrace()` and simplified to a plain trace of
+  the criterion sequence with the minimal information criterion highlighted (the
+  best draw and the best-model guide); the two upper control limits and the
+  burn-in shading have been removed. The `plot()` panel selector changes to
+  match: use `plot(fit, which = "ictrace")` in place of `which = "ichart"`.
+
+## Minor changes
+
+* The diagnostic plots were restyled for clarity: legends now sit inside the
+  plotting region with a white background, and the colours were refreshed
+  (`plotVarProb()` draws the threshold in red on the right with the selected set
+  in blue and the legend under the threshold; `plotICtrace()` marks the best model
+  in red and the best draw / best-so-far in blue; `plotGelman()` draws the median
+  in blue and the 97.5% limit in red; `plotModelFreq()` highlights the top model
+  bar in red with a blue cumulative overlay).
 
 ## New features
 

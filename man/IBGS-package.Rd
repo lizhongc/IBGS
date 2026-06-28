@@ -33,7 +33,7 @@ Every sampler returns an object of class \code{"IBGS"} with
 \code{\link[=coef.IBGS]{coef}} and \code{\link[=plot.IBGS]{plot}} methods.
 \code{\link[=predict.IBGS]{predict}} and \code{\link[=fitted.IBGS]{fitted}} form
 model-averaged predictions, and
-\code{\link{plotIchart}}, \code{\link{plotModelFreq}} and
+\code{\link{plotICtrace}}, \code{\link{plotModelFreq}} and
 \code{\link{plotVarProb}} provide diagnostic plots.
 }
 \author{

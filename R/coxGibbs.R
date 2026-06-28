@@ -16,13 +16,13 @@
 #   max.size   the maximal number of predictors in a candidate model,
 #              default is ncol(x)
 #   permute    the coordinate visiting order within each Gibbs sweep. TRUE
-#              (default) draws a fresh random permutation each sweep, so every
+#              draws a fresh random permutation each sweep, so every
 #              predictor is updated exactly once per sweep (without
-#              replacement); FALSE uses a fixed in-order systematic sweep.
+#              replacement); FALSE (default) uses a fixed in-order systematic sweep.
 #   n.models   the number of top selected models, default is 10
 #   threshold  the threshold to select the important predictors, default 0.9
 #   n.draws    the half number of generated samples, default is 1000
-#   inv.temp the tuning parameter, default is 1
+#   inv.temp the tuning parameter, default is 0.5
 #   ebic.gamma the parameter for extended BIC, default is 0.5
 #   criterion  the model selection criterion: AIC, BIC, AICc or exBIC
 #   weights    optional prior case weights (length nrow(x)); defaults
@@ -44,9 +44,9 @@
 #   and visit frequency of each top model), ic.trace (the criterion at
 #   every generation) and criterion (the criterion name).  Has
 #   print, summary, coef and plot methods.
-coxGibbs <- function(y, status, x, max.size = ncol(x), permute = TRUE,
+coxGibbs <- function(y, status, x, max.size = ncol(x), permute = FALSE,
                             n.models = 10, threshold = 0.9, n.draws = 1000,
-                            inv.temp = 1, ebic.gamma = 0.5,
+                            inv.temp = 0.5, ebic.gamma = 0.5,
                             criterion = c("AIC", "BIC", "AICc", "exBIC"),
                             weights = NULL, cor.check = NULL,
                             start = c("null", "full")){

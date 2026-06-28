@@ -99,7 +99,7 @@ summary.IBGS <- function(object, ...) {
 
   structure(list(family = object$family, criterion = object$criterion,
                  threshold = object$threshold, n.pred = length(object$var.names),
-                 vars = vtab, models = mtab),
+                 vars = vtab, models = mtab, convergence = object$convergence),
             class = "summary.IBGS")
 }
 
@@ -125,30 +125,45 @@ print.summary.IBGS <- function(x, ...) {
   m$ic   <- formatC(m$ic,   format = "f", digits = 4)
   m$freq <- formatC(m$freq, format = "f", digits = 3)
   print(m, row.names = FALSE)
+
+  # convergence diagnostics of the criterion trace (see .ibgs.diag)
+  cv <- x$convergence
+  if (!is.null(cv)) {
+    cat(sprintf("\nConvergence diagnostics (on the %s trace):\n", x$criterion))
+    cat(sprintf("  Gelman-Rubin R-hat: %.3f (upper %.3f)\n",
+                cv$gelman[["point"]], cv$gelman[["upper"]]))
+    cat(sprintf("  Geweke z:           %.3f\n", cv$geweke))
+    cat(sprintf("  Effective size:     %.1f\n", cv$ess))
+    cat(sprintf("  Autocorrelation lag 1: %.3f\n", cv$autocorr[["1"]]))
+  }
   invisible(x)
 }
 
 # Diagnostic plots for an IBGS fit
 #
-# Dispatches to the diagnostic plots: the I-chart of the criterion trace
-# (plotIchart()), the marginal inclusion probabilities
-# (plotVarProb()), and the top-model visit frequencies
-# (plotModelFreq()).  Several may be requested at once, in which case
-# they are drawn in a multi-panel layout.
+# Dispatches to the diagnostic plots: the trace of the criterion sequence
+# (plotICtrace()), the marginal inclusion probabilities (plotVarProb()), the
+# top-model visit frequencies (plotModelFreq()), the Gelman-Rubin shrink factor
+# (plotGelman()), and the trace autocorrelation (plotAutocorr()).  Several may be
+# requested at once, in which case they are drawn in a multi-panel layout.
 #
 # Arguments:
 #   x     an "IBGS" result
-#   which one or more of "ichart", "varprob",
-#         "modelfreq"; default is all three
+#   which one or more of "ictrace", "varprob", "modelfreq", "gelman",
+#         "autocorr"; default is all five
 #   ...   further graphical parameters, forwarded only when a single panel
 #         is requested
 # Value: x, invisibly
-plot.IBGS <- function(x, which = c("ichart", "varprob", "modelfreq"), ...) {
-  which <- match.arg(which, c("ichart", "varprob", "modelfreq"),
+plot.IBGS <- function(x, which = c("ictrace", "varprob", "modelfreq",
+                                   "gelman", "autocorr"), ...) {
+  which <- match.arg(which, c("ictrace", "varprob", "modelfreq",
+                             "gelman", "autocorr"),
                      several.ok = TRUE)
-  draw  <- list(ichart    = plotIchart,
+  draw  <- list(ictrace   = plotICtrace,
                 varprob   = plotVarProb,
-                modelfreq = plotModelFreq)
+                modelfreq = plotModelFreq,
+                gelman    = plotGelman,
+                autocorr  = plotAutocorr)
   if (length(which) > 1) {
     ncol <- min(length(which), 2L)
     nrow <- ceiling(length(which) / ncol)
@@ -170,7 +185,7 @@ plot.IBGS <- function(x, which = c("ichart", "varprob", "modelfreq"), ...) {
 # marginal.prob, selected.vars, threshold, var.names (and, for rlm, the
 # random-effect block) and the averaged training linear.predictors around this.
 .ibgs.object <- function(out, inv.temp, criterion, family, has.intercept) {
-  structure(
+  obj <- structure(
     list(n.models      = ncol(out$coef),
          model.ic      = out$model.ic,    # criterion of each top model (ascending)
          model.freq    = out$model.freq,  # visit frequency of each top model
@@ -181,6 +196,40 @@ plot.IBGS <- function(x, which = c("ichart", "varprob", "modelfreq"), ...) {
          criterion     = criterion,       # the model selection criterion name
          family        = family),
     class = "IBGS")
+  obj$convergence <- .ibgs.diag(out$ic.trace)   # coda-style diagnostics of the trace
+  obj
+}
+
+# Internal helper: convergence diagnostics of the information-criterion trace.
+#
+# Calls the self-contained C routine (no coda dependency) and tidies the result
+# into the list stored as result$convergence.  All diagnostics are computed on
+# ic.trace, the criterion value at each generation -- the same sequence the
+# I-chart monitors -- treated as a univariate MCMC chain.  The Gelman-Rubin
+# diagnostic splits that single chain into n.seg equal contiguous segments
+# (split-Rhat).  Fields:
+#   gelman   named c(point, upper): Gelman-Rubin potential scale reduction factor
+#   geweke   the Geweke z-statistic (first 10% vs last 50% of the chain)
+#   ess      the effective sample size
+#   autocorr the lag autocorrelations, named by lag (0..lag.max)
+#   shrink   data.frame(iter, median, upper): the evolving shrink factor for
+#            plotGelman()
+#
+# Arguments:
+#   ic.trace the criterion-at-each-generation vector from the C sampler
+#   n.seg    number of contiguous segments for the split-chain Gelman-Rubin
+#   lag.max  highest autocorrelation lag to report
+#   n.bin    number of breakpoints for the evolving shrink factor
+.ibgs.diag <- function(ic.trace, n.seg = 4L, lag.max = 40L, n.bin = 20L) {
+  d <- .Call("ibgs_diag", as.double(ic.trace), as.integer(n.seg),
+             as.integer(lag.max), as.integer(n.bin), PACKAGE = "IBGS")
+  list(gelman   = stats::setNames(d$gelman, c("point", "upper")),
+       geweke   = d$geweke,
+       ess      = d$ess,
+       autocorr = stats::setNames(d$acf, d$acf.lag),
+       shrink   = data.frame(iter   = d$shrink$iter,
+                             median = d$shrink$median,
+                             upper  = d$shrink$upper))
 }
 
 # Internal helper: detect near-collinear covariate pairs and stop.
