@@ -24,6 +24,9 @@ Methods are described in Chen (2022),
   over the retained top models with smooth-SIC (BMA-style) weights.
 - **Diagnostics:** a trace of the criterion sequence, marginal inclusion
   probabilities, and top-model visit frequencies.
+- **Convergence diagnostics:** the Gelman–Rubin shrink-factor evolution, the Geweke
+  z-statistic, the effective sample size, and the autocorrelation of the
+  criterion trace..
 - **Scales to large p:** the per-generation indicator matrix is summarized in C,
   so the fitted object stays compact even for thousands of predictors.
 
@@ -56,8 +59,8 @@ y <- rowSums(x[, 1:3]) + rnorm(100)
 
 fit <- glmIBGS(y, x, criterion = "BIC")
 fit                       # concise overview
-summary(fit)              # selected-variable and top-model tables
-plot(fit)                 # criterion trace, marginal probabilities, model frequencies
+summary(fit)              # selected-variable, top-model tables and convergence diagostics
+plot(fit)                 # criterion trace, marginal probabilities, model frequencies, G-R scale, autocorrelation
 
 coef(fit)                 # best model; coef(fit, average = TRUE) to average
 predict(fit, x[1:5, ])    # model-averaged predictions on new data
@@ -70,12 +73,12 @@ fitted(fit)               # model-averaged fitted values
 |---|---|---|
 | GLM (gaussian / binomial / poisson) | `glmIBGS()` | `glmGibbs()` |
 | Cox proportional hazards | `coxIBGS()` | `coxGibbs()` |
-| Robust / mixed linear model | `rlmIBGS()` | `rlmGibbs()` |
+| Linear mixed model | `rlmIBGS()` | `rlmGibbs()` |
 
 Each sampler returns an object of class `"IBGS"` with `print()`, `summary()`,
 `plot()`, `coef()`, `predict()` and `fitted()` methods. The plotting helpers
-`plotICtrace()`, `plotVarProb()` and `plotModelFreq()` are also exported for
-drawing the individual diagnostics.
+`plotICtrace()`, `plotVarProb()`, `plotModelFreq()`, `plotGelman()` and
+`plotAutocorr()` are also exported for drawing the individual diagnostics.
 
 Common arguments include `criterion` (selection criterion), `n.models` (number
 of top models to retain and average over), `threshold` (marginal-probability
