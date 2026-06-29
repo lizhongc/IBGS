@@ -7,9 +7,7 @@ proportional-hazards model when the number of predictors is very large. The
 sampler is implemented in C with parallel block screening through OpenMP, and
 returns a small set of high-scoring models together with marginal inclusion
 probabilities and model-averaged predictions.
-
-Methods are described in Chen (2022),
-<https://hdl.handle.net/11343/311691>.
+Methods are described in Chen (2022).
 
 ## Features
 
@@ -65,7 +63,7 @@ y <- rowSums(x[, 1:3]) + rnorm(100)
 fit <- glmIBGS(y, x, criterion = "BIC")
 fit                       # concise overview
 summary(fit)              # selected-variable, top-model tables and convergence diagnostics
-plot(fit)                 # criterion trace, marginal probabilities, model frequencies, G-R scale, autocorrelation
+plot(fit)                 # criterion trace, marginal probabilities, model frequencies, R_hat, autocorrelation
 
 coef(fit)                 # best model; coef(fit, average = TRUE) to average
 predict(fit, x[1:5, ])    # model-averaged predictions on new data
@@ -103,7 +101,7 @@ vignette("IBGS")
 
 ## Reference
 
-Chen, L. (2022). PhD thesis, The University of Melbourne.
+Chen, L. (2022). Model selection and averaging by Gibbs sampler with a tropical cyclone seasonal forecasting application, PhD thesis, The University of Melbourne.
 <https://hdl.handle.net/11343/311691>
 
 ## License

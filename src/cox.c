@@ -10,11 +10,20 @@
 
 #include <R.h>
 #include <Rmath.h>
+#define USE_FC_LEN_T
+#include <R_ext/BLAS.h>
+#include <R_ext/Lapack.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+
+/* FCONE passes the hidden Fortran string-length argument to the LAPACK UPLO flag
+ * (no-op on toolchains without USE_FC_LEN_T). */
+#ifndef FCONE
+# define FCONE
+#endif
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -68,44 +77,40 @@
 #define ETA_CLAMP 30.0    /* bound on eta so e^{eta} cannot overflow            */
 
 /*
- * Solve the symmetric positive-definite system A x = b by Cholesky (A is q x q
- * row-major; only the lower triangle is read and is overwritten by its factor).
- * Returns 1 if a pivot is non-positive -- the information matrix is singular,
- * meaning the model's columns are collinear -- so the caller can reject the
- * model.  Self-contained copy (Cox does not share glm.c's static solver).
+ * Solve the symmetric positive-definite system A x = b by Cholesky.
+ *
+ * dpotrf then dpotrs (LAPACK) Cholesky-factor A = U'U and solve A x = b.  dpotrf
+ * is LAPACK's Cholesky factorisation of a symmetric positive-definite matrix;
+ * dpotrs applies that factor to solve the system.  Cox calls them for the Newton
+ * step I delta = U, where A is the q x q observed information matrix and b its
+ * score vector.
+ *
+ * Argument map.  A holds the information matrix as a full symmetric q x q array,
+ * so its lower triangle in row-major order is byte-for-byte the upper triangle in
+ * column-major order; we pass UPLO="U" with leading dimension q -- no transpose.
+ * dpotrf overwrites A's (upper) triangle with the factor U and returns the order
+ * of the first non-positive-definite leading minor in info (0 = success).  dpotrs
+ * takes nrhs=1, the same A and leading dimension q, and overwrites its right-hand
+ * side, so we copy b into x first and pass x, which returns the Newton step delta.
+ * FCONE passes the hidden Fortran length of the "U" flag.
+ *
+ * The factorisation doubles as a rank check: a non-zero info, or any pivot with
+ * U[r,r]^2 <= 1e-12, means the information matrix is singular (collinear columns),
+ * so we return 1 and the caller rejects the model.  The 1e-12 pivot floor matches
+ * the previous hand-rolled solver.
+ *
+ * Equivalent R operation: x <- solve(A, b) for symmetric positive-definite A.
+ * Netlib references: LAPACK dpotrf, dpotrs.
  */
 static int coxchols(double *A, const double *b, double *x, int q)
 {
-    int r, s, m;
+    int r, info, one = 1;
+    F77_CALL(dpotrf)("U", &q, A, &q, &info FCONE);
+    if (info != 0) return 1;                       /* not PD -> singular model    */
     for (r = 0; r < q; r++)
-    {
-        for (s = 0; s <= r; s++)
-        {
-            double sum = A[r * q + s];
-            for (m = 0; m < s; m++) sum -= A[r * q + m] * A[s * q + m];
-            if (r == s)
-            {
-                if (sum <= 1e-12) return 1;          /* not PD -> singular model */
-                A[r * q + r] = sqrt(sum);
-            }
-            else
-            {
-                A[r * q + s] = sum / A[s * q + s];
-            }
-        }
-    }
-    for (r = 0; r < q; r++)                 /* forward solve L u = b */
-    {
-        double sum = b[r];
-        for (m = 0; m < r; m++) sum -= A[r * q + m] * x[m];
-        x[r] = sum / A[r * q + r];
-    }
-    for (r = q - 1; r >= 0; r--)            /* back solve L' x = u */
-    {
-        double sum = x[r];
-        for (m = r + 1; m < q; m++) sum -= A[m * q + r] * x[m];
-        x[r] = sum / A[r * q + r];
-    }
+        if (A[r * q + r] <= 1e-6) return 1;        /* pivot^2 <= 1e-12: collinear */
+    for (r = 0; r < q; r++) x[r] = b[r];
+    F77_CALL(dpotrs)("U", &q, &one, A, &q, x, &q, &info FCONE);
     return 0;
 }
 

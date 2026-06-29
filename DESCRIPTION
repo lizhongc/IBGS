@@ -1,7 +1,6 @@
 Package: IBGS
 Type: Package
-Title: Iterated Block Gibbs Sampler for Ultrahigh-Dimensional Variable
-    Selection and Model Averaging
+Title: Iterated Block Gibbs Sampler for Ultrahigh-Dimensional Variable Selection and Model Averaging
 Version: 1.0.0
 Authors@R:
     person("Lizhong", "Chen", , "chen.l@wehi.edu.au",
@@ -13,8 +12,7 @@ Description: Variable selection for generalized linear models and the Cox
     families (fitted by least squares or iteratively reweighted least squares)
     as well as the Cox model for survival analysis (fitted by its Efron partial
     likelihood), together with the AIC, BIC, AICc and extended BIC model
-    selection criteria. Methods are described in Chen (2022)
-    <https://hdl.handle.net/11343/311691>.
+    selection criteria.
 License: GPL-3
 Encoding: UTF-8
 Depends:

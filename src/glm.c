@@ -15,6 +15,7 @@
 #include <Rmath.h>
 #define USE_FC_LEN_T
 #include <R_ext/BLAS.h>
+#include <R_ext/Lapack.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -82,54 +83,41 @@
 /*
  * Solve the symmetric positive-definite system A x = b by Cholesky.
  *
- * A is q x q row-major; only its lower triangle is read.  We factor A = L L'
- * with L lower-triangular (overwriting A's lower triangle in place), then solve
- * the two triangular systems L u = b (forward substitution) and L' x = u (back
- * substitution).  This is the standard O(q^3/3) SPD solver and is numerically
- * stable without pivoting because A = D'WD is symmetric positive (semi-)
- * definite by construction.
+ * dpotrf then dpotrs (LAPACK) Cholesky-factor A = U'U and solve A x = b for it.
+ * dpotrf is LAPACK's Cholesky factorisation of a symmetric positive-definite
+ * matrix; dpotrs applies that factor to solve the linear system.  The package
+ * calls them here because every candidate GLM (IRLS) and lme fit reduces to the
+ * q x q normal equations A beta = b (A = D'WD, b = D'Wz); this routine is that
+ * solve, shared by the glmirls, glmcoef and lmecoef paths.
  *
- * The factorisation also doubles as a rank check: if a pivot A[r,r] is <= a
- * small tolerance the matrix is (numerically) singular -- the candidate model
- * has collinear/duplicated columns -- and we bail out with code 1 so the caller
- * can reject that model rather than divide by ~0.
+ * Argument map.  A is the q x q normal matrix held with its lower triangle in
+ * row-major order, which is byte-for-byte the upper triangle in column-major
+ * order, so we pass UPLO="U" and leading dimension q -- no transpose or copy,
+ * and it matches how glmirls fills A with dsyrk(UPLO='U').  dpotrf overwrites A's
+ * (upper) triangle with the factor U and returns the order of the first non-PD
+ * leading minor in its info status (0 = success).  dpotrs takes the number of
+ * right-hand sides nrhs=1, the same A and leading dimension q, and overwrites its
+ * right-hand side -- we copy b into x first and pass x, which comes back holding
+ * the solution.  FCONE passes the hidden Fortran length of the "U" flag.
  *
- * Cholesky recurrence (j = column, i = row, i >= j):
- *     L[j,j] = sqrt( A[j,j] - sum_{m<j} L[j,m]^2 )
- *     L[i,j] = ( A[i,j] - sum_{m<j} L[i,m] L[j,m] ) / L[j,j]
+ * The factorisation doubles as a rank check: a non-zero info, or any pivot with
+ * U[r,r]^2 <= 1e-12, means the active columns are collinear/duplicated, so we
+ * return 1 and the caller rejects the model rather than divide by ~0.  The 1e-12
+ * pivot floor reproduces the previous hand-rolled solver's singularity guard.
+ *
+ * Equivalent R operation: x <- solve(A, b) for symmetric positive-definite A
+ * (chol() followed by forward/back substitution).
+ * Netlib references: LAPACK dpotrf, dpotrs.
  */
 int cholsolv(double *A, const double *b, double *x, int q)
 {
-    int r, s, m;
+    int r, info, one = 1;
+    F77_CALL(dpotrf)("U", &q, A, &q, &info FCONE);
+    if (info != 0) return 1;                       /* not PD -> singular model    */
     for (r = 0; r < q; r++)
-    {
-        for (s = 0; s <= r; s++)
-        {
-            double sum = A[r * q + s];
-            for (m = 0; m < s; m++) sum -= A[r * q + m] * A[s * q + m];
-            if (r == s)
-            {
-                if (sum <= 1e-12) return 1;        /* not PD -> singular model */
-                A[r * q + r] = sqrt(sum);
-            }
-            else
-            {
-                A[r * q + s] = sum / A[s * q + s];
-            }
-        }
-    }
-    for (r = 0; r < q; r++)                 /* forward solve L u = b */
-    {
-        double sum = b[r];
-        for (m = 0; m < r; m++) sum -= A[r * q + m] * x[m];
-        x[r] = sum / A[r * q + r];
-    }
-    for (r = q - 1; r >= 0; r--)            /* back solve L' x = u */
-    {
-        double sum = x[r];
-        for (m = r + 1; m < q; m++) sum -= A[m * q + r] * x[m];
-        x[r] = sum / A[r * q + r];
-    }
+        if (A[r * q + r] <= 1e-6) return 1;        /* pivot^2 <= 1e-12: collinear */
+    for (r = 0; r < q; r++) x[r] = b[r];
+    F77_CALL(dpotrs)("U", &q, &one, A, &q, x, &q, &info FCONE);
     return 0;
 }
 
@@ -464,7 +452,7 @@ double icval(double m2ll, int npar, int npred, int n, int info, double gamma, in
  */
 double rsschol(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf)
 {
-    int r, s, m;
+    int r, s;
 
     /* (1) copy the active sub-block S and sub-vector b out of G, Gy */
     for (r = 0; r < q; r++)
@@ -475,38 +463,28 @@ double rsschol(const double *G, const double *Gy, int ptot1, const int *active, 
             Sbuf[r * q + s] = G[ar * ptot1 + active[s]];
     }
 
-    /* (2) Cholesky S = L L' (lower triangle), in place into Sbuf */
-
+    /* (2) Cholesky-factor S = U'U and solve S beta = b in place (bbuf <- beta).
+     *
+     * dpotrf (LAPACK) Cholesky-factors the symmetric positive-definite S; dpotrs
+     * applies that factor to solve the q x q system.  We call them because each
+     * candidate gaussian/lme fit reduces to these whitened normal equations.
+     * S is gathered with both triangles populated, so passing UPLO="U" with
+     * leading dimension q factors it with no transpose; dpotrf overwrites S's
+     * upper triangle with the factor U and reports a non-positive-definite leading
+     * minor in info.  dpotrs takes nrhs=1 and overwrites its right-hand side, so
+     * bbuf (which already holds b = Gy[active]) comes back holding beta.  FCONE
+     * passes the hidden Fortran length of "U".  A non-zero info, or any pivot with
+     * U[r,r]^2 <= 1e-10, marks collinear active columns and we return -1 so the
+     * caller rejects the model; the 1e-10 floor matches the former hand solver.
+     *
+     * Equivalent R operation: beta <- solve(S, b) for symmetric positive-definite S.
+     * Netlib references: LAPACK dpotrf, dpotrs. */
+    int info, one = 1;
+    F77_CALL(dpotrf)("U", &q, Sbuf, &q, &info FCONE);
+    if (info != 0) return -1.0;                    /* not PD -> singular model     */
     for (r = 0; r < q; r++)
-    {
-        for (s = 0; s <= r; s++)
-        {
-            double sum = Sbuf[r * q + s];
-            for (m = 0; m < s; m++)
-                sum -= Sbuf[r * q + m] * Sbuf[s * q + m];
-            if (r == s)
-            {
-                if (sum <= 1e-10) return -1.0;
-                Sbuf[r * q + r] = sqrt(sum);
-            }
-            else
-            {
-                Sbuf[r * q + s] = sum / Sbuf[s * q + s];
-            }
-        }
-    }
-    for (r = 0; r < q; r++)                 /* forward solve L u = b  */
-    {
-        double sum = bbuf[r];
-        for (m = 0; m < r; m++) sum -= Sbuf[r * q + m] * bbuf[m];
-        bbuf[r] = sum / Sbuf[r * q + r];
-    }
-    for (r = q - 1; r >= 0; r--)            /* back solve L' beta = u */
-    {
-        double sum = bbuf[r];
-        for (m = r + 1; m < q; m++) sum -= Sbuf[m * q + r] * bbuf[m];
-        bbuf[r] = sum / Sbuf[r * q + r];
-    }
+        if (Sbuf[r * q + r] <= 1e-5) return -1.0;  /* pivot^2 <= 1e-10: collinear  */
+    F77_CALL(dpotrs)("U", &q, &one, Sbuf, &q, bbuf, &q, &info FCONE);
     /* (3) RSS = y'Wy - beta' M_A'Wy */
     double fdot = 0.0;
     for (r = 0; r < q; r++) fdot += Gy[active[r]] * bbuf[r];
