@@ -26,16 +26,21 @@ Methods are described in Chen (2022),
   probabilities, and top-model visit frequencies.
 - **Convergence diagnostics:** the Gelman–Rubin shrink-factor evolution, the Geweke
   z-statistic, the effective sample size, and the autocorrelation of the
-  criterion trace..
+  criterion trace.
 - **Scales to large p:** the per-generation indicator matrix is summarized in C,
   so the fitted object stays compact even for thousands of predictors.
 
 ## Installation
 
-The package is not on CRAN. A C compiler is required (OpenMP is used when
-available for the parallel block screening).
+Install the released version from CRAN:
 
-From a local copy of the source:
+```r
+install.packages("IBGS")
+```
+
+A C compiler is required to build from source (OpenMP is used when available for
+the parallel block screening). To install the development version from a local
+copy of the source:
 
 ```sh
 R CMD INSTALL IBGS
@@ -59,7 +64,7 @@ y <- rowSums(x[, 1:3]) + rnorm(100)
 
 fit <- glmIBGS(y, x, criterion = "BIC")
 fit                       # concise overview
-summary(fit)              # selected-variable, top-model tables and convergence diagostics
+summary(fit)              # selected-variable, top-model tables and convergence diagnostics
 plot(fit)                 # criterion trace, marginal probabilities, model frequencies, G-R scale, autocorrelation
 
 coef(fit)                 # best model; coef(fit, average = TRUE) to average
@@ -77,7 +82,7 @@ fitted(fit)               # model-averaged fitted values
 
 Each sampler returns an object of class `"IBGS"` with `print()`, `summary()`,
 `plot()`, `coef()`, `predict()` and `fitted()` methods. The plotting helpers
-`plotICtrace()`, `plotVarProb()`, `plotModelFreq()`, `plotGelman()` and
+`plotICtrace()`, `plotMargProb()`, `plotModelFreq()`, `plotGelman()` and
 `plotAutocorr()` are also exported for drawing the individual diagnostics.
 
 Common arguments include `criterion` (selection criterion), `n.models` (number

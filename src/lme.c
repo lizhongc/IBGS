@@ -89,7 +89,8 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
     lmewst  wsl;
     lmewst *ws    = wsi;
     int    owned = 0;
-    if (!ws) {
+    if (!ws)
+    {
         lmewsallc(&wsl, ptot1, n);
         ws    = &wsl;
         owned = 1;
@@ -105,35 +106,39 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
     /* Precompute the plain Gram of M* = [istar | Xstar] ONCE:
      *   G  = M*'M*  (ptot1 x ptot1),  Gy = M*'ystar,  yty = ystar'ystar.
      * Column 0 is the whitened intercept istar; columns 1..ptot are Xstar. */
+    double s00 = 0.0;
+    for (i = 0; i < n; i++) s00 += istar[i] * istar[i];
+    G[0] = s00;
+    for (a = 0; a < ptot; a++)
     {
-        double s00 = 0.0;
-        for (i = 0; i < n; i++) s00 += istar[i] * istar[i];
-        G[0] = s00;
-        for (a = 0; a < ptot; a++) {
-            const double *Xa = Xstar + (size_t) a * n;
+        const double *Xa = Xstar + (size_t) a * n;
+        double s = 0.0;
+        for (i = 0; i < n; i++) s += istar[i] * Xa[i];
+        G[(a + 1) * ptot1] = s;
+        G[a + 1]           = s;
+    }
+    for (a = 0; a < ptot; a++)
+    {
+        const double *Xa = Xstar + (size_t) a * n;
+        for (b = a; b < ptot; b++)
+        {
+            const double *Xb = Xstar + (size_t) b * n;
             double s = 0.0;
-            for (i = 0; i < n; i++) s += istar[i] * Xa[i];
-            G[(a + 1) * ptot1] = s;
-            G[a + 1]           = s;
-        }
-        for (a = 0; a < ptot; a++) {
-            const double *Xa = Xstar + (size_t) a * n;
-            for (b = a; b < ptot; b++) {
-                const double *Xb = Xstar + (size_t) b * n;
-                double s = 0.0;
-                for (i = 0; i < n; i++) s += Xa[i] * Xb[i];
-                G[(a + 1) * ptot1 + (b + 1)] = s;
-                G[(b + 1) * ptot1 + (a + 1)] = s;
-            }
+            for (i = 0; i < n; i++) s += Xa[i] * Xb[i];
+            G[(a + 1) * ptot1 + (b + 1)] = s;
+            G[(b + 1) * ptot1 + (a + 1)] = s;
         }
     }
     double yty = 0.0;
+    double s0 = 0.0;
+    for (i = 0; i < n; i++)
     {
-        double s0 = 0.0;
-        for (i = 0; i < n; i++) { s0 += istar[i] * ystar[i]; yty += ystar[i] * ystar[i]; }
-        Gy[0] = s0;
+        s0 += istar[i] * ystar[i];
+        yty += ystar[i] * ystar[i];
     }
-    for (a = 0; a < ptot; a++) {
+    Gy[0] = s0;
+    for (a = 0; a < ptot; a++)
+    {
         const double *Xa = Xstar + (size_t) a * n;
         double s = 0.0;
         for (i = 0; i < n; i++) s += Xa[i] * ystar[i];
@@ -151,8 +156,16 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
      * from smod), trailing p2 forced on.  The intercept (column 0 = istar) is
      * always active and is not in inc[]. */
     int nsel = 0;
-    for (a = 0; a < p1; a++)    { inc[a] = smod[a] ? 1 : 0; nsel += inc[a]; }
-    for (a = p1; a < ptot; a++) { inc[a] = 1; nsel += 1; }
+    for (a = 0; a < p1; a++)
+    {
+        inc[a] = smod[a] ? 1 : 0;
+        nsel += inc[a];
+    }
+    for (a = p1; a < ptot; a++)
+    {
+        inc[a] = 1;
+        nsel += 1;
+    }
 
     #define BUILD_ACTIVE(qout)                                  \
         do {                                                     \
@@ -171,19 +184,25 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
         for (a = 0; a < p1; a++) ofrq[a] = 0.0;
 
     int nsweep = 2 * len;
-    for (int sw = 0; sw < nsweep; sw++) {
+    for (int sw = 0; sw < nsweep; sw++)
+    {
         /* perm = TRUE: visit each of the p1 toggleable coordinates exactly once
          * per sweep, in a fresh random order (Fisher-Yates), i.e. without
          * replacement.  perm = FALSE: the fixed 0..p1-1 systematic sweep. */
-        if (perm) {
+        if (perm)
+        {
             for (int t = 0; t < p1; t++) ord[t] = t;
-            for (int t = p1 - 1; t > 0; t--) {
+            for (int t = p1 - 1; t > 0; t--)
+            {
                 int u = (int) (UNIF(rng) * (t + 1));
                 if (u > t) u = t;                 /* guard the UNIF==~1 edge */
-                int tmp = ord[t]; ord[t] = ord[u]; ord[u] = tmp;
+                int tmp = ord[t];
+                ord[t] = ord[u];
+                ord[u] = tmp;
             }
         }
-        for (int step = 0; step < p1; step++) {
+        for (int step = 0; step < p1; step++)
+        {
             int j = perm ? ord[step] : step;
 
             int pnsel = nsel + (inc[j] ? -1 : 1);
@@ -195,18 +214,25 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
             double propic = LME_IC(pq, ok);
 
             int accept = 0;
-            if (ok) {
+            if (ok)
+            {
                 double A = exp(k * (curic - propic));
                 if (A > 1.0) A = 1.0;
                 if (UNIF(rng) < A) accept = 1;
-                if (accept) { curic = propic; nsel = pnsel; }
+                if (accept)
+                {
+                    curic = propic;
+                    nsel = pnsel;
+                }
             }
             if (!accept) inc[j] ^= 1;
         }
 
-        if (sw >= len) {
+        if (sw >= len)
+        {
             int row = sw - len;
-            if (omat) {
+            if (omat)
+            {
                 omat[row] = 1;
                 for (a = 0; a < ptot; a++)
                     omat[(a + 1) * len + row] = inc[a];
@@ -231,7 +257,11 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
 static double lmeic(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf, int n, double ldv0, int info, double gamma, int p0, int *ok)
 {
     double rss = rsschol(G, Gy, ptot1, active, q, yty, Sbuf, bbuf);
-    if (rss < 0.0) { *ok = 0; return 0.0; }
+    if (rss < 0.0)
+    {
+        *ok = 0;
+        return 0.0;
+    }
     *ok = 1;
     double base = (double) n * (log(2.0 * M_PI * rss / (double) n) + 1.0) + ldv0;
     return icval(base, q + 1, q - 1, n, info, gamma, p0);
@@ -267,11 +297,13 @@ static int lmenblks(int nS1, int H, int n, int nS2)
 
 static void lmedrwbl(int nS1, int h, int *assign, uint64_t *seeds)
 {
-    for (int i = 0; i < nS1; i++) {
+    for (int i = 0; i < nS1; i++)
+    {
         int a = (int) (unif_rand() * h);
         assign[i] = (a >= h) ? h - 1 : a;
     }
-    for (int b = 0; b < h; b++) {
+    for (int b = 0; b < h; b++)
+    {
         uint64_t hi = (uint64_t) (unif_rand() * 4294967296.0);
         uint64_t lo = (uint64_t) (unif_rand() * 4294967296.0);
         seeds[b] = (hi << 32) ^ lo ^ (0x9E3779B97F4A7C15ULL * (uint64_t) (b + 1));
@@ -293,7 +325,8 @@ static int lmescrbl(const double *ystar, const double *Xstar, const double *ista
 
     for (int i = 0; i < nS1; i++) sz[assign[i]]++;
     off[0] = 0;
-    for (int b = 0; b < h; b++) {
+    for (int b = 0; b < h; b++)
+    {
         off[b + 1] = off[b] + sz[b];
         cur[b]     = off[b];
     }
@@ -308,31 +341,33 @@ static int lmescrbl(const double *ystar, const double *Xstar, const double *ista
     /* one reusable workspace per thread, allocated up front on the main thread
      * (R_Calloc is not thread-safe), so the parallel loop allocates nothing */
     int nws = nthr > 0 ? nthr : 1;
-#ifndef _OPENMP
+    #ifndef _OPENMP
     nws = 1;
-#endif
+    #endif
     lmewst *wsa = R_Calloc((size_t) nws, lmewst);
     for (int t = 0; t < nws; t++) lmewsallc(&wsa[t], capt, n);
 
     int fail = 0;
-#ifdef _OPENMP
+    #ifdef _OPENMP
     #pragma omp parallel for num_threads(nthr) schedule(dynamic) shared(fail)
-#endif
-    for (int b = 0; b < h; b++) {
+    #endif
+    for (int b = 0; b < h; b++)
+    {
         int pb = sz[b];
         if (pb <= 0) continue;
 
-#ifdef _OPENMP
+        #ifdef _OPENMP
         lmewst *ws = &wsa[omp_get_thread_num()];
-#else
+        #else
         lmewst *ws = &wsa[0];
-#endif
+        #endif
         int    *bcols = ws->bcols;
         int    *s0    = ws->s0;
         double *fr    = ws->fr;
         double *Xb    = ws->Xb;
 
-        for (int c = 0; c < pb; c++) {
+        for (int c = 0; c < pb; c++)
+        {
             bcols[c] = S1[pos[off[b] + c]];
             s0[c]    = start_full ? 1 : 0;
         }
@@ -342,15 +377,16 @@ static int lmescrbl(const double *ystar, const double *Xstar, const double *ista
 
         rngt rng;
         rngseed(&rng, seeds[b]);
-        int rc = runlmegb(ystar, Xb, istar, n, pb, nS2, s0, perm, len, k,
-                          gamma, p0, info, ldv0, pb + nS2, &rng, NULL,
-                          fr, NULL, ws);
-        if (rc) {
-#ifdef _OPENMP
+        int rc = runlmegb(ystar, Xb, istar, n, pb, nS2, s0, perm, len, k, gamma, p0, info, ldv0, pb + nS2, &rng, NULL, fr, NULL, ws);
+        if (rc)
+        {
+            #ifdef _OPENMP
             #pragma omp atomic write
-#endif
+            #endif
             fail = 1;
-        } else {
+        }
+        else
+        {
             for (int c = 0; c < pb; c++)
                 vfreq[S1[pos[off[b] + c]]] = fr[c];
         }
@@ -378,9 +414,7 @@ int lmegbsam(const double *ystar, const double *Xstar, const double *istar, int 
     if (!s0) return 1;
     for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
-    int fail = runlmegb(ystar, Xstar, istar, n, p, 0, s0, perm, len, k, gamma,
-                        p, info, ldv0, nvars, /*rng=*/NULL, mbuf, vpbuf,
-                        sicbuf, /*ws=*/NULL);
+    int fail = runlmegb(ystar, Xstar, istar, n, p, 0, s0, perm, len, k, gamma, p, info, ldv0, nvars, /*rng=*/NULL, mbuf, vpbuf, sicbuf, /*ws=*/NULL);
     free(s0);
     return fail;
 }
@@ -389,9 +423,9 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
 {
     int p0 = p;
 
-#ifdef _OPENMP
+    #ifdef _OPENMP
     if (nthr <= 0) nthr = omp_get_max_threads();
-#endif
+    #endif
 
     /* one per-search workspace, reused across every iteration and the final
      * screening (the long run that records the outputs is done by lmeibgrun) */
@@ -406,21 +440,21 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
     int nS2 = 0, fail = 0;
 
     /* ---- refinement iterations (screen -> select -> threshold) ---- */
-    for (int iter = 1; iter < niter && !fail; iter++) {
+    for (int iter = 1; iter < niter && !fail; iter++)
+    {
         int nS1 = 0;
         for (int j = 0; j < p; j++) if (!inS2[j]) S1[nS1++] = j;
 
         int h = lmenblks(nS1, H, n, nS2);
         lmedrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm,
-                        start_full, len, k, gamma, p0, info, ldv0, nthr, assign,
-                        ws.seeds, vfreq);
+        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm, start_full, len, k, gamma, p0, info, ldv0, nthr, assign, ws.seeds, vfreq);
         if (fail) break;
 
         int kk = (kapp < nS1) ? kapp : nS1;
         fit *arr = ws.arr;
-        for (int i = 0; i < nS1; i++) {
+        for (int i = 0; i < nS1; i++)
+        {
             arr[i].v   = vfreq[S1[i]];
             arr[i].idx = S1[i];
         }
@@ -437,16 +471,17 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
         double *fr = ws.fr;
         gathcols(Xstar, n, xs, ps, Xs);
         for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
-        fail = runlmegb(ystar, Xs, istar, n, ps, 0, s0, perm, len, k, gamma,
-                        p0, info, ldv0, ps, NULL, NULL, fr, NULL, NULL);
+        fail = runlmegb(ystar, Xs, istar, n, ps, 0, s0, perm, len, k, gamma, p0, info, ldv0, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
 
         int cnt = 0;
         for (int i = 0; i < ps; i++) if (fr[i] > tau) cnt++;
         memset(inS2, 0, (size_t) p * sizeof(int));
         nS2 = 0;
-        for (int i = 0; i < ps; i++) {
-            if (cnt > 1 ? (fr[i] > tau) : 1) {
+        for (int i = 0; i < ps; i++)
+        {
+            if (cnt > 1 ? (fr[i] > tau) : 1)
+            {
                 S2[nS2] = xs[i];
                 inS2[xs[i]] = 1;
                 nS2++;
@@ -460,23 +495,24 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
     *lfout = 4 * len;
     int ps = 0;
 
-    if (!fail) {
+    if (!fail)
+    {
         int nS1 = 0;
         for (int j = 0; j < p; j++) if (!inS2[j]) S1[nS1++] = j;
 
         int h = lmenblks(nS1, H, n, nS2);
         lmedrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h,
-                        perm, start_full, len, k, gamma, p0, info, ldv0, nthr,
-                        assign, ws.seeds, vfreq);
+        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm, start_full, len, k, gamma, p0, info, ldv0, nthr, assign, ws.seeds, vfreq);
 
-        if (!fail) {
+        if (!fail)
+        {
             int kk = (kapp < nS1) ? kapp : nS1;
             ps = kk + nS2;
             fit  *arr = ws.arr;
             int  *xs  = xsout;   /* build the candidate set directly into the caller buffer (ps <= p) */
-            for (int i = 0; i < nS1; i++) {
+            for (int i = 0; i < nS1; i++)
+            {
                 arr[i].v   = vfreq[S1[i]];
                 arr[i].idx = S1[i];
             }
@@ -518,9 +554,11 @@ int lmeibgrun(const double *ystar, const double *Xstar, const double *istar, int
     for (int i = 0; i < ps; i++) s0[i] = 1;
     int fail = runlmegb(ystar, Xs, istar, n, ps, 0, s0, perm, lenf, k, gamma, p, info, ldv0, ps, NULL, omat, fr, oic, NULL);
 
-    if (!fail) {
+    if (!fail)
+    {
         for (int j = 0; j < p; j++) vprob[j] = 0.0;
-        for (int i = 0; i < ps; i++) {
+        for (int i = 0; i < ps; i++)
+        {
             vprob[xs[i]] = fr[i];
             sel[i]       = xs[i] + 1;
         }
@@ -545,12 +583,14 @@ void lmecoef(const double *ystar, const double *D, int n, int q, double *bout)
     /* normal equations (D'D) beta = D'y, solved by Cholesky */
     double *G  = R_Calloc((size_t) q * q, double);
     double *Gy = R_Calloc((size_t) q, double);
-    for (int a = 0; a < q; a++) {
+    for (int a = 0; a < q; a++)
+    {
         const double *Daptr = D + (size_t) a * n;
         double sgy = 0.0;
         for (int i = 0; i < n; i++) sgy += Daptr[i] * ystar[i];
         Gy[a] = sgy;
-        for (int c = a; c < q; c++) {
+        for (int c = a; c < q; c++)
+        {
             const double *Dcptr = D + (size_t) c * n;
             double s = 0.0;
             for (int i = 0; i < n; i++) s += Daptr[i] * Dcptr[i];
@@ -558,11 +598,14 @@ void lmecoef(const double *ystar, const double *D, int n, int q, double *bout)
             G[c * q + a] = s;
         }
     }
-    if (cholsolv(G, Gy, bout, q)) for (int a = 0; a < q; a++) bout[a] = 0.0;
+    if (cholsolv(G, Gy, bout, q))
+        for (int a = 0; a < q; a++) bout[a] = 0.0;
 
     /* zero non-finite coefficients so predictions never see NaN */
-    for (int a = 0; a < q; a++) {
-        if (!R_FINITE(bout[a])) {
+    for (int a = 0; a < q; a++)
+    {
+        if (!R_FINITE(bout[a]))
+        {
             for (int c = 0; c < q; c++) bout[c] = 0.0;
             break;
         }
@@ -587,7 +630,8 @@ int lmesumm(const double *ystar, const double *Xstar, const double *istar, int n
     int *act = (int *) malloc((size_t) cap * sizeof(int));
     double *D = (double *) malloc((size_t) n * (cap + 1) * sizeof(double));
     double *bout = (double *) malloc((size_t) (ps + 1) * sizeof(double));
-    if (!cnt || !rep || !act || !D || !bout) {
+    if (!cnt || !rep || !act || !D || !bout)
+    {
         free(cnt);
         free(rep);
         free(act);
@@ -595,7 +639,8 @@ int lmesumm(const double *ystar, const double *Xstar, const double *istar, int n
         free(bout);
         return 1;
     }
-    if (summtab(oic, lenf, nm_in, micout, cnt, rep, nm)) {
+    if (summtab(oic, lenf, nm_in, micout, cnt, rep, nm))
+    {
         free(cnt);
         free(rep);
         free(act);
@@ -605,10 +650,13 @@ int lmesumm(const double *ystar, const double *Xstar, const double *istar, int n
     }
     int m = *nm;
     for (size_t t = 0; t < (size_t) nr * m; t++) coef[t] = 0.0;
-    for (int i = 0; i < m; i++) {
+    for (int i = 0; i < m; i++)
+    {
         int q = 0;
-        for (int c = 1; c <= ps; c++) {
-            if (omat[(size_t) rep[i] + (size_t) c * lenf] == 1) {
+        for (int c = 1; c <= ps; c++)
+        {
+            if (omat[(size_t) rep[i] + (size_t) c * lenf] == 1)
+            {
                 act[q] = xs[c - 1];
                 q++;
             }

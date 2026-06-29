@@ -8,6 +8,7 @@ plotModelFreq(
   col = NULL,
   annotate = TRUE,
   cumulative = FALSE,
+  horizontal = FALSE,
   ...
 )
 }
@@ -21,6 +22,9 @@ plotModelFreq(
 \item{annotate}{write each bar's criterion value above it, default \code{TRUE}}
 
 \item{cumulative}{overlay the cumulative visit frequency, default \code{FALSE}}
+
+\item{horizontal}{draw horizontal bars (model rank down the y-axis) instead of
+vertical bars, default \code{FALSE}}
 
 \item{...}{further graphical parameters passed to \code{\link{barplot}}}
 }

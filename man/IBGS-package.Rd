@@ -34,7 +34,7 @@ Every sampler returns an object of class \code{"IBGS"} with
 \code{\link[=predict.IBGS]{predict}} and \code{\link[=fitted.IBGS]{fitted}} form
 model-averaged predictions, and
 \code{\link{plotICtrace}}, \code{\link{plotModelFreq}} and
-\code{\link{plotVarProb}} provide diagnostic plots.
+\code{\link{plotMargProb}} provide diagnostic plots.
 }
 \author{
 Lizhong Chen <chen.l@wehi.edu.au>

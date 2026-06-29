@@ -83,11 +83,14 @@ plotICtrace <- function(result, col = NULL, highlight = NULL,
 #   col      bar colour for the non-best models, default from the palette
 #   annotate write each bar's criterion value above it, default TRUE
 #   cumulative overlay the cumulative visit frequency, default FALSE
+#   horizontal draw horizontal bars (model rank down the y-axis) instead of
+#              vertical bars, default FALSE
 #   ...      further graphical parameters passed to barplot()
 #
 # Value: invisibly, the vector of plotted relative model frequencies
 plotModelFreq <- function(result, n.models = result$n.models, col = NULL,
-                          annotate = TRUE, cumulative = FALSE, ...){
+                          annotate = TRUE, cumulative = FALSE, horizontal = FALSE,
+                          ...){
   pal <- .ibgs.cols()
   if (is.null(col)) col <- pal$trace
 
@@ -96,29 +99,47 @@ plotModelFreq <- function(result, n.models = result$n.models, col = NULL,
   ic       <- result$model.ic[seq_len(n.models)]
   names(freq) <- seq_len(n.models)            # model rank (best = 1)
 
-  # reserve room on the right for the cumulative axis and its title (on exit)
+  # reserve room for the cumulative axis and its title (on exit): the right
+  # margin for vertical bars, the top margin for horizontal bars
   if (isTRUE(cumulative)) {
-    op <- par(mar = par("mar") + c(0, 0, 0, 3)); on.exit(par(op))
+    extra <- if (isTRUE(horizontal)) c(0, 0, 3, 0) else c(0, 0, 0, 3)
+    op <- par(mar = par("mar") + extra); on.exit(par(op))
   }
 
   cols <- rep(col, n.models)
   cols[1] <- "red"                            # best model stands out
-  bp <- barplot(freq, xlab = "Model (ranked by criterion)",
-                ylab = "Visit frequency", col = cols, border = NA,
-                ylim = c(0, max(freq) * 1.15), ...)
+  flim <- c(0, max(freq) * 1.15)              # frequency-axis range
+  if (isTRUE(horizontal))
+    bp <- barplot(freq, horiz = TRUE, las = 1,
+                  xlab = "Visit frequency", ylab = "Model (ranked by criterion)",
+                  col = cols, border = NA, xlim = flim, ...)
+  else
+    bp <- barplot(freq, xlab = "Model (ranked by criterion)",
+                  ylab = "Visit frequency", col = cols, border = NA,
+                  ylim = flim, ...)
 
-  if (isTRUE(annotate))
-    text(bp, freq, labels = formatC(ic, format = "f", digits = 1),
-         pos = 3, cex = 0.7, col = pal$trace, xpd = NA)
+  if (isTRUE(annotate)) {
+    labs <- formatC(ic, format = "f", digits = 1)
+    if (isTRUE(horizontal))
+      text(freq, bp, labels = labs, pos = 4, cex = 0.7, col = pal$trace, xpd = NA)
+    else
+      text(bp, freq, labels = labs, pos = 3, cex = 0.7, col = pal$trace, xpd = NA)
+  }
 
   if (isTRUE(cumulative)) {
     cum <- cumsum(freq) / sum(result$model.freq)   # share of all recorded visits
-    lines(bp, cum * max(freq), col = "blue", lwd = 2)
-    points(bp, cum * max(freq), pch = 19, col = "blue", cex = 0.7)
-    axis(4, at = pretty(c(0, 1)) * max(freq), labels = pretty(c(0, 1)),
-         col.axis = "blue", col = "blue")
-    mtext("cumulative frequency", side = 4, line = 2.5, col = "blue",
-          cex = 0.8)
+    at4 <- pretty(c(0, 1)) * max(freq)
+    if (isTRUE(horizontal)) {
+      lines(cum * max(freq), bp, col = "blue", lwd = 2)
+      points(cum * max(freq), bp, pch = 19, col = "blue", cex = 0.7)
+      axis(3, at = at4, labels = pretty(c(0, 1)), col.axis = "blue", col = "blue")
+      mtext("cumulative frequency", side = 3, line = 2.5, col = "blue", cex = 0.8)
+    } else {
+      lines(bp, cum * max(freq), col = "blue", lwd = 2)
+      points(bp, cum * max(freq), pch = 19, col = "blue", cex = 0.7)
+      axis(4, at = at4, labels = pretty(c(0, 1)), col.axis = "blue", col = "blue")
+      mtext("cumulative frequency", side = 4, line = 2.5, col = "blue", cex = 0.8)
+    }
   }
 
   invisible(freq)
@@ -126,25 +147,31 @@ plotModelFreq <- function(result, n.models = result$n.models, col = NULL,
 
 # Plot the marginal inclusion probability of the top covariates
 #
-# Draws a lollipop plot of the n.vars covariates with the highest marginal
-# inclusion probability, sorted descending.  A dashed line marks the selection
-# threshold; covariates above it (the selected predictors) are
-# highlighted and the rest are muted, so the selected set stands out.  The
-# predictor names are written under the axis.
+# Draws a dot-and-whisker plot of the n.vars covariates with the highest marginal
+# inclusion probability, sorted descending.  Each point carries an error bar of
+# +/- one Monte-Carlo standard error of the inclusion proportion,
+# se = sqrt(p (1 - p) / ESS), where ESS is the effective sample size of the
+# criterion trace (result$convergence$ess); the bars are clamped to [0, 1].  The
+# selected predictors (result$selected.vars) are highlighted and the rest are
+# muted, so the selected set stands out.  With horizontal = TRUE the predictors
+# are laid out down the y-axis (names read horizontally on the left); otherwise
+# they run along the x-axis (the default).
 #
 # Arguments:
 #   result an "IBGS" result from one of the samplers
 #   n.vars the number of top covariates to show, default 20
-#   col    colour of the below-threshold stems, default from the palette
-#   lwd    stem line width
-#   side   margin side for the predictor labels (see mtext())
+#   col    colour of the non-selected points, default from the palette
+#   horizontal lay the predictors down the y-axis instead of along the x-axis,
+#              default FALSE
+#   lwd    error-bar line width
+#   side   margin side for the predictor labels (vertical layout; see mtext())
 #   line   margin line for the labels
-#   las    label orientation (2 = perpendicular)
+#   las    label orientation (vertical layout; 2 = perpendicular)
 #   cex    label character expansion
 #
 # Value: invisibly, the named vector of plotted inclusion probabilities
-plotVarProb <- function(result, n.vars = 20, col = NULL, lwd = 2, side = 1,
-                        line = 0.25, las = 2, cex = 1){
+plotMargProb <- function(result, n.vars = 20, col = NULL, horizontal = FALSE,
+                         lwd = 2, side = 1, line = 0.25, las = 2, cex = 1){
   pal <- .ibgs.cols()
   if (is.null(col)) col <- pal$muted
 
@@ -154,26 +181,48 @@ plotVarProb <- function(result, n.vars = 20, col = NULL, lwd = 2, side = 1,
   v.freq  <- result$marginal.prob[v.order]
   v.name  <- result$var.names[v.order]
 
-  sel    <- v.freq > result$threshold              # selected (above threshold)
+  sel    <- v.name %in% result$selected.vars       # selected predictors
   colors <- ifelse(sel, "blue", col)
-  xx     <- seq_len(n.vars)
+  lab.col <- ifelse(sel, "blue", pal$trace)
 
-  plot(xx, v.freq, xlab = "", ylab = "Marginal inclusion probability",
-       xaxt = "n", main = "", type = "n", ylim = c(0, 1))
-  segments(xx, 0, xx, v.freq, col = colors, lwd = lwd, lend = 1)   # stems
-  points(xx, v.freq, pch = 19, col = colors, cex = 0.8)            # heads
-  abline(h = result$threshold, col = "red", lty = 2, lwd = 1.5)    # threshold
-  # threshold label on the right, just above the line
-  text(n.vars + 0.4, result$threshold,
-       labels = sprintf("threshold = %.2g", result$threshold),
-       adj = c(1, -0.4), cex = 0.75, col = "red", xpd = NA)
-  # predictor names under the axis; selected ones in blue
-  mtext(v.name, side = side, line = line, at = xx, las = las, cex = cex,
-        col = ifelse(sel, "blue", pal$trace))
-  # colour key under the threshold line, right-aligned, on a white background
-  legend(x = n.vars + 0.4, y = result$threshold-0.02, xjust = 1, yjust = 1,
-         legend = c("selected", "not selected"),
-         col = c("blue", col), pch = 19, cex = 0.8, bg = "white",bty = "n", xpd = NA)
+  # Monte-Carlo standard error of each inclusion proportion, using the effective
+  # sample size of the criterion trace (falls back to the recorded chain length
+  # when the ESS is unavailable for a very short run)
+  n.eff <- result$convergence$ess
+  if (is.null(n.eff) || !is.finite(n.eff) || n.eff <= 0)
+    n.eff <- length(result$ic.trace)
+  se <- sqrt(pmax(v.freq * (1 - v.freq), 0) / n.eff)
+  eb <- se > 0                                      # skip prob 0/1 (zero whisker)
+  lo <- pmax(0, v.freq - se)
+  hi <- pmin(1, v.freq + se)
+
+  if (isTRUE(horizontal)) {
+    yy <- rev(seq_len(n.vars))                      # best (rank 1) at the top
+    # widen the left margin so the predictor names have room
+    op <- par(mar = par("mar") + c(0, 2, 0, 0)); on.exit(par(op))
+    plot(v.freq, yy, xlab = "Marginal inclusion probability", ylab = "",
+         yaxt = "n", main = "", type = "n", xlim = c(0, 1))
+    if (any(eb))                                    # +/- 1 MC SE (horizontal)
+      arrows(lo[eb], yy[eb], hi[eb], yy[eb],
+             angle = 90, code = 3, length = 0.03, lwd = lwd, col = "grey60", xpd = NA)
+    points(v.freq, yy, pch = 19, col = colors, cex = 0.8)
+    mtext(v.name, side = 2, line = line, at = yy, las = 1, cex = cex, col = lab.col)
+    legend("bottomright", legend = c("selected", "not selected"),
+           col = c("blue", col), pch = 19, cex = 0.8, bg = "white", bty = "n")
+  } else {
+    xx <- seq_len(n.vars)
+    plot(xx, v.freq, xlab = "", ylab = "Marginal inclusion probability",
+         xaxt = "n", main = "", type = "n", ylim = c(0, 1))
+    if (any(eb))                                    # +/- 1 MC SE (vertical)
+      arrows(xx[eb], lo[eb], xx[eb], hi[eb],
+             angle = 90, code = 3, length = 0.03, lwd = lwd, col = "grey60", xpd = NA)
+    points(xx, v.freq, pch = 19, col = colors, cex = 0.8)
+    # predictor names under the axis; selected ones in blue
+    mtext(v.name, side = side, line = line, at = xx, las = las, cex = cex, col = lab.col)
+    # colour key, top-right (bars are sorted descending so that corner is clear)
+    legend("topright", legend = c("selected", "not selected"),
+           col = c("blue", col), pch = 19, cex = 0.8, bg = "white", bty = "n")
+  }
 
   invisible(stats::setNames(v.freq, v.name))
 }

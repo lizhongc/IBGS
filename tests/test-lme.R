@@ -1,0 +1,44 @@
+library(IBGS)
+source("helper-sim.R")
+
+# lmeIBGS / lmeGibbs with a grouping factor work and carry BLUPs
+set.seed(21)
+d  <- sim_lme()
+fi <- lmeIBGS(d$y, d$x, group = d$group, criterion = "BIC",
+              block.size = 15, n.keep = 10, n.refine = 2, n.draws = 150)
+expect_ibgs(fi, ncol(d$x))
+stopifnot("re" %in% names(fi))             # random-effect BLUPs
+expect_recovers(fi, d$truth)
+
+fg <- lmeGibbs(d$y, d$x, group = d$group, criterion = "BIC", n.draws = 150)
+expect_ibgs(fg, ncol(d$x))
+stopifnot("re" %in% names(fg))
+
+stopifnot(length(fitted(fg)) == length(d$y))
+pc <- predict(fg, d$x[1:5, ], group.new = d$group[1:5])  # conditional prediction
+stopifnot(length(pc) == 5)
+stopifnot(is.numeric(pc))
+
+# lme accepts a general random part via Z + varcomp
+set.seed(22)
+d   <- sim_lme(g = 5)
+Z   <- model.matrix(~ d$group - 1)            # group-indicator random-effects design
+fit <- lmeGibbs(d$y, d$x, Z = Z,
+                varcomp = list(sigma2b = 1, sigma2e = 1), criterion = "BIC",
+                n.draws = 60)
+expect_ibgs(fit, ncol(d$x))
+stopifnot("re" %in% names(fit))
+
+# lme accepts a directly supplied marginal covariance V (no BLUPs)
+set.seed(23)
+d   <- sim_lme()
+V   <- diag(nrow(d$x))                         # identity => ordinary least squares
+fit <- lmeGibbs(d$y, d$x, V = V, criterion = "BIC", n.draws = 60)
+expect_ibgs(fit, ncol(d$x))
+stopifnot(is.null(fit$re))                     # a bare V yields no random-effect BLUPs
+
+# lme errors when no random part is specified
+set.seed(24)
+d <- sim_lme()
+expect_err(lmeGibbs(d$y, d$x), "random part")
+expect_err(lmeIBGS(d$y, d$x), "random part")

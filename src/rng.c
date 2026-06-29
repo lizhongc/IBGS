@@ -67,8 +67,12 @@ static uint64_t xonext(rngt *r)
     uint64_t *s = r->s;
     uint64_t result = s[0] + s[3];
     uint64_t t = s[1] << 17;
-    s[2] ^= s[0]; s[3] ^= s[1]; s[1] ^= s[2]; s[0] ^= s[3];
-    s[2] ^= t;    s[3] = rotl(s[3], 45);
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
+    s[3] = rotl(s[3], 45);
     return result;
 }
 

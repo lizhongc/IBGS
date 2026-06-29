@@ -12,7 +12,7 @@
  * on the "IBGS" object.
  *
  * The formulas mirror coda and R's stats::ar.yw so the numbers agree with the
- * standard tools; tests/testthat/test-convergence.R cross-checks them against
+ * standard tools; tests/test-convergence.R cross-checks them against
  * stats::ar and stats::acf.
  */
 #include "ibgs.h"
@@ -26,7 +26,8 @@
 static double mean_d(const double *x, int n)
 {
     double s = 0.0;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
+    {
         s += x[i];
     }
     return s / n;
@@ -35,12 +36,14 @@ static double mean_d(const double *x, int n)
 /* sample variance of x[0..n-1] (denominator n-1, as R's var) */
 static double var_d(const double *x, int n)
 {
-    if (n < 2) {
+    if (n < 2)
+    {
         return NA_REAL;
     }
     double m = mean_d(x, n);
     double s = 0.0;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
+    {
         double d = x[i] - m;
         s += d * d;
     }
@@ -50,13 +53,15 @@ static double var_d(const double *x, int n)
 /* sample covariance of a[0..n-1], b[0..n-1] (denominator n-1, as R's cov) */
 static double cov_d(const double *a, const double *b, int n)
 {
-    if (n < 2) {
+    if (n < 2)
+    {
         return NA_REAL;
     }
     double ma = mean_d(a, n);
     double mb = mean_d(b, n);
     double s = 0.0;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
+    {
         s += (a[i] - ma) * (b[i] - mb);
     }
     return s / (n - 1);
@@ -70,9 +75,11 @@ static double cov_d(const double *a, const double *b, int n)
 static void autocov(const double *x, int n, int maxlag, double *out)
 {
     double m = mean_d(x, n);
-    for (int k = 0; k <= maxlag; k++) {
+    for (int k = 0; k <= maxlag; k++)
+    {
         double s = 0.0;
-        for (int t = 0; t + k < n; t++) {
+        for (int t = 0; t + k < n; t++)
+        {
             s += (x[t] - m) * (x[t + k] - m);
         }
         out[k] = s / n;
@@ -86,10 +93,11 @@ static void autocov(const double *x, int n, int maxlag, double *out)
  */
 void acf_vec(const double *x, int n, int lag_max, double *out)
 {
-    double *c = (double *) R_Calloc((size_t) (lag_max + 1), double);
+    double *c = R_Calloc((size_t) (lag_max + 1), double);
     autocov(x, n, lag_max, c);
     double c0 = c[0];
-    for (int k = 0; k <= lag_max; k++) {
+    for (int k = 0; k <= lag_max; k++)
+    {
         out[k] = (c0 > 0.0) ? c[k] / c0 : NA_REAL;
     }
     R_Free(c);
@@ -108,52 +116,62 @@ void acf_vec(const double *x, int n, int lag_max, double *out)
  */
 double spectrum0_ar(const double *x, int n, int *order)
 {
-    if (n < 2) {
+    if (n < 2)
+    {
         return NA_REAL;
     }
     int om = (int) floor(10.0 * log10((double) n));
-    if (om > n - 1) {
+    if (om > n - 1)
+    {
         om = n - 1;
     }
-    if (om < 1) {
+    if (om < 1)
+    {
         om = 1;
     }
 
-    double *r = (double *) R_Calloc((size_t) (om + 1), double);
+    double *r = R_Calloc((size_t) (om + 1), double);
     autocov(x, n, om, r);
     double c0 = r[0];
-    if (!(c0 > 0.0)) {                 /* constant series: spec 0, order 0 */
+    if (!(c0 > 0.0))                 /* constant series: spec 0, order 0 */
+    {
         R_Free(r);
-        if (order != NULL) {
+        if (order != NULL)
+        {
             *order = 0;
         }
         return 0.0;
     }
 
-    double *E = (double *) R_Calloc((size_t) (om + 1), double);
-    double *a = (double *) R_Calloc((size_t) om, double);
-    double *aprev = (double *) R_Calloc((size_t) om, double);
-    double *acoef = (double *) R_Calloc((size_t) om * (size_t) om, double);
+    double *E = R_Calloc((size_t) (om + 1), double);
+    double *a = R_Calloc((size_t) om, double);
+    double *aprev = R_Calloc((size_t) om, double);
+    double *acoef = R_Calloc((size_t) om * (size_t) om, double);
 
     /* Levinson-Durbin: prediction-error variance and coefs for each order */
     E[0] = c0;
     int kmax = om;
-    for (int k = 1; k <= om; k++) {
+    for (int k = 1; k <= om; k++)
+    {
         double acc = r[k];
-        for (int j = 1; j <= k - 1; j++) {
+        for (int j = 1; j <= k - 1; j++)
+        {
             acc -= aprev[j - 1] * r[k - j];
         }
         double kappa = acc / E[k - 1];
         a[k - 1] = kappa;
-        for (int j = 1; j <= k - 1; j++) {
+        for (int j = 1; j <= k - 1; j++)
+        {
             a[j - 1] = aprev[j - 1] - kappa * aprev[k - 1 - j];
         }
         E[k] = E[k - 1] * (1.0 - kappa * kappa);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             acoef[(size_t) (k - 1) * om + j] = a[j];
         }
         memcpy(aprev, a, (size_t) k * sizeof(double));
-        if (!(E[k] > 0.0)) {           /* numerically degenerate: stop here */
+        if (!(E[k] > 0.0))           /* numerically degenerate: stop here */
+        {
             kmax = k - 1;
             break;
         }
@@ -162,12 +180,15 @@ double spectrum0_ar(const double *x, int n, int *order)
     /* AIC order selection on the unscaled prediction variances */
     int sel = 0;
     double best = (double) n * log(E[0]);
-    for (int k = 1; k <= kmax; k++) {
-        if (!(E[k] > 0.0)) {
+    for (int k = 1; k <= kmax; k++)
+    {
+        if (!(E[k] > 0.0))
+        {
             continue;
         }
         double aic = (double) n * log(E[k]) + 2.0 * k;
-        if (aic < best) {
+        if (aic < best)
+        {
             best = aic;
             sel = k;
         }
@@ -175,16 +196,19 @@ double spectrum0_ar(const double *x, int n, int *order)
 
     double evar = E[sel] * (double) n / (double) (n - (sel + 1));
     double sumar = 0.0;
-    if (sel > 0) {
+    if (sel > 0)
+    {
         const double *ac = &acoef[(size_t) (sel - 1) * om];
-        for (int j = 0; j < sel; j++) {
+        for (int j = 0; j < sel; j++)
+        {
             sumar += ac[j];
         }
     }
     double denom = 1.0 - sumar;
     double spec = evar / (denom * denom);
 
-    if (order != NULL) {
+    if (order != NULL)
+    {
         *order = sel;
     }
     R_Free(acoef);
@@ -201,12 +225,14 @@ double spectrum0_ar(const double *x, int n, int *order)
  */
 double ess_val(const double *x, int n)
 {
-    if (n < 2) {
+    if (n < 2)
+    {
         return NA_REAL;
     }
     double v = var_d(x, n);
     double spec = spectrum0_ar(x, n, NULL);
-    if (!(spec > 0.0)) {
+    if (!(spec > 0.0))
+    {
         return 0.0;
     }
     return (double) n * v / spec;
@@ -222,13 +248,15 @@ double ess_val(const double *x, int n)
  */
 double geweke_z(const double *x, int n, double frac1, double frac2)
 {
-    if (n < 4) {
+    if (n < 4)
+    {
         return NA_REAL;
     }
     int n1 = (int) floor(frac1 * (n - 1)) + 1;
     int start2 = (int) ceil(frac2 * (n - 1));
     int n2 = n - start2;
-    if (n1 < 2 || n2 < 2) {
+    if (n1 < 2 || n2 < 2)
+    {
         return NA_REAL;
     }
     const double *w1 = x;
@@ -238,7 +266,8 @@ double geweke_z(const double *x, int n, double frac1, double frac2)
     double s1 = spectrum0_ar(w1, n1, NULL) / n1;
     double s2 = spectrum0_ar(w2, n2, NULL) / n2;
     double denom = sqrt(s1 + s2);
-    if (!(denom > 0.0)) {
+    if (!(denom > 0.0))
+    {
         return NA_REAL;
     }
     return (m1 - m2) / denom;
@@ -257,24 +286,28 @@ void gelman1d(const double *x, int n, int m, double *psrf, double *upper)
 {
     *psrf = NA_REAL;
     *upper = NA_REAL;
-    if (m < 2) {
+    if (m < 2)
+    {
         return;
     }
     int L = n / m;                      /* iterations per segment */
-    if (L < 2) {
+    if (L < 2)
+    {
         return;
     }
     double Niter = (double) L;
     double Nchain = (double) m;
 
-    double *xbar = (double *) R_Calloc((size_t) m, double);
-    double *xbar2 = (double *) R_Calloc((size_t) m, double);
-    double *s2 = (double *) R_Calloc((size_t) m, double);
-    for (int j = 0; j < m; j++) {
+    double *xbar = R_Calloc((size_t) m, double);
+    double *xbar2 = R_Calloc((size_t) m, double);
+    double *s2 = R_Calloc((size_t) m, double);
+    for (int j = 0; j < m; j++)
+    {
         const double *seg = x + (size_t) j * L;
         double mu = mean_d(seg, L);
         double ss = 0.0;
-        for (int t = 0; t < L; t++) {
+        for (int t = 0; t < L; t++)
+        {
             double d = seg[t] - mu;
             ss += d * d;
         }
@@ -286,7 +319,8 @@ void gelman1d(const double *x, int n, int m, double *psrf, double *upper)
     double w = mean_d(s2, m);                       /* W */
     double muhat = mean_d(xbar, m);
     double b = Niter * var_d(xbar, m);              /* B */
-    if (!(w > 0.0)) {
+    if (!(w > 0.0))
+    {
         R_Free(s2);
         R_Free(xbar2);
         R_Free(xbar);
@@ -313,7 +347,8 @@ void gelman1d(const double *x, int n, int m, double *psrf, double *upper)
     double R2_est = R2_fixed + R2_random;
     *psrf = sqrt(df_adj * R2_est);
 
-    if (var_w > 0.0 && R_FINITE(W_df)) {
+    if (var_w > 0.0 && R_FINITE(W_df))
+    {
         double q = qf(0.975, B_df, W_df, 1, 0);
         double R2_upper = R2_fixed + q * R2_random;
         *upper = sqrt(df_adj * R2_upper);
@@ -330,37 +365,49 @@ void gelman1d(const double *x, int n, int m, double *psrf, double *upper)
  * each of the m segments has at least ~10 iterations) up to n, over at most nbin
  * breakpoints.  Writes the prefix length, point estimate and upper limit of each
  * usable breakpoint to iters/med/upper (caller-sized to nbin) and the number
- * written to *nb.
+ * written to *nb.  Passing iters == NULL (md/up ignored) performs a count-only
+ * pass: it skips the stores but still reports the usable breakpoint count in *nb,
+ * so a caller can size exact-length outputs before a second, filling call.
  */
-void gelman_shrink(const double *x, int n, int m, int nbin,
-                   double *iters, double *med, double *upper, int *nb)
+void gelman_shrink(const double *x, int n, int m, int nbin, double *iters, double *med, double *upper, int *nb)
 {
     *nb = 0;
-    if (m < 2 || nbin < 1) {
+    if (m < 2 || nbin < 1)
+    {
         return;
     }
     int emin = m * 10;
-    if (emin > n) {
+    if (emin > n)
+    {
         emin = m * 2;
     }
-    if (emin > n) {
+    if (emin > n)
+    {
         return;
     }
 
     int count = 0;
-    for (int i = 0; i < nbin; i++) {
+    for (int i = 0; i < nbin; i++)
+    {
         int E;
-        if (nbin == 1) {
+        if (nbin == 1)
+        {
             E = n;
-        } else {
+        }
+        else
+        {
             E = emin + (int) ((double) (n - emin) * i / (nbin - 1) + 0.5);
         }
         double p, u;
         gelman1d(x, E, m, &p, &u);
-        if (R_FINITE(p)) {
-            iters[count] = (double) E;
-            med[count] = p;
-            upper[count] = R_FINITE(u) ? u : NA_REAL;
+        if (R_FINITE(p))
+        {
+            if (iters != NULL)
+            {
+                iters[count] = (double) E;
+                med[count] = p;
+                upper[count] = R_FINITE(u) ? u : NA_REAL;
+            }
             count++;
         }
     }

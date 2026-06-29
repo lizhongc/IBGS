@@ -63,8 +63,8 @@ frequency of the top models, and a trace of the criterion sequence.  Here is
 the inclusion-probability plot:
 
 \begin{center}
-<<varprob, fig=TRUE, height=4, width=6>>=
-plotVarProb(fit, n.vars = 15)
+<<margprob, fig=TRUE, height=4, width=6>>=
+plotMargProb(fit, n.vars = 15)
 @
 \end{center}
 

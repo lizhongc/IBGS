@@ -61,7 +61,8 @@ SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, 
 
     GetRNGstate();
     int fail = ibgssel(REAL(y2), REAL(X2), REAL(pw2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asLogical(fast), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), family, asInteger(nthr), xs, &ps, &lenf);
-    if (fail) {
+    if (fail)
+    {
         PutRNGstate();
         R_Free(xs);
         UNPROTECT(3);
@@ -76,7 +77,8 @@ SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, 
 
     fail = ibgsrun(REAL(y2), REAL(X2), REAL(pw2), n, p, xs, ps, lenf, asLogical(perm), asLogical(fast), asInteger(start), asReal(k), asReal(gam), asInteger(info), family, omat, REAL(msic), REAL(vprob), INTEGER(sel));
     PutRNGstate();
-    if (fail) {
+    if (fail)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
@@ -84,7 +86,8 @@ SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, 
     }
 
     int nm_req = summnm(REAL(msic), lenf, asInteger(nmod));
-    if (nm_req < 0) {
+    if (nm_req < 0)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
@@ -98,7 +101,8 @@ SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, 
     fail = glmsumm(REAL(y2), REAL(X2), REAL(pw2), n, p, xs, ps, omat, REAL(msic), lenf, family, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
-    if (fail) {
+    if (fail)
+    {
         UNPROTECT(9);
         error("ibgs_glm: out of memory or numerical failure");
     }
@@ -145,7 +149,8 @@ SEXP gibbs_sampler_glm(SEXP y, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP fast,
     GetRNGstate();
     int fail = gibbssam(REAL(y2), REAL(X2), REAL(pw2), n, p, asInteger(nvar), asLogical(perm), asLogical(fast), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), family, omat, REAL(msic), REAL(vprob));
     PutRNGstate();
-    if (fail) {
+    if (fail)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(5);
@@ -153,7 +158,8 @@ SEXP gibbs_sampler_glm(SEXP y, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP fast,
     }
 
     int nm_req = summnm(REAL(msic), nlen, asInteger(nmod));
-    if (nm_req < 0) {
+    if (nm_req < 0)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(5);
@@ -167,7 +173,8 @@ SEXP gibbs_sampler_glm(SEXP y, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP fast,
     fail = glmsumm(REAL(y2), REAL(X2), REAL(pw2), n, p, xs, p, omat, REAL(msic), nlen, family, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
-    if (fail) {
+    if (fail)
+    {
         UNPROTECT(8);
         error("gibbs_sampler_glm: out of memory or numerical failure");
     }
@@ -213,7 +220,8 @@ SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kap
 
     GetRNGstate();
     int fail = coxibgsel(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), asInteger(nthr), xs, &ps, &lenf);
-    if (fail) {
+    if (fail)
+    {
         PutRNGstate();
         R_Free(xs);
         UNPROTECT(4);
@@ -227,7 +235,8 @@ SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kap
 
     fail = coxibgrun(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, xs, ps, lenf, asLogical(perm), asInteger(start), asReal(k), asReal(gam), asInteger(info), omat, REAL(msic), REAL(vprob), INTEGER(sel));
     PutRNGstate();
-    if (fail) {
+    if (fail)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(7);
@@ -235,7 +244,8 @@ SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kap
     }
 
     int nm_req = summnm(REAL(msic), lenf, asInteger(nmod));
-    if (nm_req < 0) {
+    if (nm_req < 0)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(7);
@@ -248,7 +258,8 @@ SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kap
     fail = coxsumm(REAL(y2), INTEGER(st2), REAL(pw2), REAL(X2), n, p, xs, ps, omat, REAL(msic), lenf, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
-    if (fail) {
+    if (fail)
+    {
         UNPROTECT(10);
         error("cox_ibgs_glm: out of memory or numerical failure");
     }
@@ -294,7 +305,8 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
     GetRNGstate();
     int fail = coxgbsam(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, asInteger(nvar), asLogical(perm), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), omat, REAL(msic), REAL(vprob));
     PutRNGstate();
-    if (fail) {
+    if (fail)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
@@ -302,7 +314,8 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
     }
 
     int nm_req = summnm(REAL(msic), nlen, asInteger(nmod));
-    if (nm_req < 0) {
+    if (nm_req < 0)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
@@ -315,7 +328,8 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
     fail = coxsumm(REAL(y2), INTEGER(st2), REAL(pw2), REAL(X2), n, p, xs, p, omat, REAL(msic), nlen, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
-    if (fail) {
+    if (fail)
+    {
         UNPROTECT(9);
         error("cox_gibbs_glm: out of memory or numerical failure");
     }
@@ -361,7 +375,8 @@ SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
 
     GetRNGstate();
     int fail = lmeibgsel(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), asInteger(nthr), xs, &ps, &lenf);
-    if (fail) {
+    if (fail)
+    {
         PutRNGstate();
         R_Free(xs);
         UNPROTECT(3);
@@ -375,7 +390,8 @@ SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
 
     fail = lmeibgrun(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, lenf, asLogical(perm), asInteger(start), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob), INTEGER(sel));
     PutRNGstate();
-    if (fail) {
+    if (fail)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
@@ -383,7 +399,8 @@ SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
     }
 
     int nm_req = summnm(REAL(msic), lenf, asInteger(nmod));
-    if (nm_req < 0) {
+    if (nm_req < 0)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(6);
@@ -397,7 +414,8 @@ SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
     fail = lmesumm(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, omat, REAL(msic), lenf, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
-    if (fail) {
+    if (fail)
+    {
         UNPROTECT(9);
         error("lme_ibgs_glm: out of memory or numerical failure");
     }
@@ -442,7 +460,8 @@ SEXP lme_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start
     GetRNGstate();
     int fail = lmegbsam(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(nvar), asLogical(perm), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob));
     PutRNGstate();
-    if (fail) {
+    if (fail)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(5);
@@ -450,7 +469,8 @@ SEXP lme_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start
     }
 
     int nm_req = summnm(REAL(msic), nlen, asInteger(nmod));
-    if (nm_req < 0) {
+    if (nm_req < 0)
+    {
         R_Free(omat);
         R_Free(xs);
         UNPROTECT(5);
@@ -464,7 +484,8 @@ SEXP lme_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start
     fail = lmesumm(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, p, omat, REAL(msic), nlen, nm_req, REAL(coef), REAL(mic), REAL(mfrq), &nm);
     R_Free(omat);
     R_Free(xs);
-    if (fail) {
+    if (fail)
+    {
         UNPROTECT(8);
         error("lme_gibbs_glm: out of memory or numerical failure");
     }
@@ -517,11 +538,8 @@ SEXP ibgs_diag(SEXP ic, SEXP nseg, SEXP lagmax, SEXP nbin)
     if (nb_req < 1) nb_req = 1;
 
     /* Gelman-Rubin, Geweke, effective size */
-    double psrf = NA_REAL, upper = NA_REAL;
-    gelman1d(x, len, m, &psrf, &upper);
     SEXP gel = PROTECT(allocVector(REALSXP, 2));
-    REAL(gel)[0] = psrf;
-    REAL(gel)[1] = upper;
+    gelman1d(x, len, m, REAL(gel), REAL(gel) + 1);
     double gz = geweke_z(x, len, 0.1, 0.5);
     double ess = ess_val(x, len);
 
@@ -529,27 +547,15 @@ SEXP ibgs_diag(SEXP ic, SEXP nseg, SEXP lagmax, SEXP nbin)
     SEXP acf = PROTECT(allocVector(REALSXP, lag + 1));
     SEXP acflag = PROTECT(allocVector(INTSXP, lag + 1));
     acf_vec(x, len, lag, REAL(acf));
-    for (int k = 0; k <= lag; k++) {
-        INTEGER(acflag)[k] = k;
-    }
+    for (int k = 0; k <= lag; k++) INTEGER(acflag)[k] = k;
 
-    /* evolving shrink factor for gelman.plot */
-    double *it = (double *) R_Calloc((size_t) nb_req, double);
-    double *md = (double *) R_Calloc((size_t) nb_req, double);
-    double *up = (double *) R_Calloc((size_t) nb_req, double);
+    /* evolving shrink factor for gelman.plot: size exactly, then fill in place */
     int nb = 0;
-    gelman_shrink(x, len, m, nb_req, it, md, up, &nb);
+    gelman_shrink(x, len, m, nb_req, NULL, NULL, NULL, &nb);
     SEXP s_it = PROTECT(allocVector(REALSXP, nb));
     SEXP s_md = PROTECT(allocVector(REALSXP, nb));
     SEXP s_up = PROTECT(allocVector(REALSXP, nb));
-    if (nb > 0) {
-        memcpy(REAL(s_it), it, (size_t) nb * sizeof(double));
-        memcpy(REAL(s_md), md, (size_t) nb * sizeof(double));
-        memcpy(REAL(s_up), up, (size_t) nb * sizeof(double));
-    }
-    R_Free(up);
-    R_Free(md);
-    R_Free(it);
+    gelman_shrink(x, len, m, nb_req, REAL(s_it), REAL(s_md), REAL(s_up), &nb);
 
     SEXP shrink = PROTECT(allocVector(VECSXP, 3));
     SET_VECTOR_ELT(shrink, 0, s_it);

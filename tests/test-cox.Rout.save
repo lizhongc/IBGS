@@ -1,0 +1,48 @@
+
+R version 4.6.0 (2026-04-24) -- "Because it was There"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(IBGS)
+> source("helper-sim.R")
+> 
+> # coxIBGS / coxGibbs run and have the right (intercept-free) structure
+> set.seed(11)
+> d  <- sim_cox()
+> fi <- coxIBGS(d$time, d$status, d$x, criterion = "BIC",
++               block.size = 10, n.keep = 10, n.refine = 2, n.draws = 150)
+> expect_ibgs(fi, ncol(d$x))
+> stopifnot(fi$family == "cox")
+> stopifnot(!fi$has.intercept)               # the Cox model has no intercept
+> stopifnot(nrow(fi$coef) == ncol(d$x))      # so no intercept row
+> 
+> fg <- coxGibbs(d$time, d$status, d$x, criterion = "BIC", n.draws = 150)
+> expect_ibgs(fg, ncol(d$x))
+> expect_recovers(fg, d$truth)
+> 
+> pr <- predict(fg, d$x[1:5, ])              # relative risk exp(x beta)
+> stopifnot(length(pr) == 5)
+> stopifnot(all(pr > 0))
+> stopifnot(length(fitted(fg)) == length(d$time))
+> 
+> # cox samplers reject a status of the wrong length
+> set.seed(12)
+> d <- sim_cox()
+> expect_err(coxGibbs(d$time, d$status[-1], d$x), "length")
+> expect_err(coxIBGS(d$time, d$status[-1], d$x), "length")
+> 
+> proc.time()
+   user  system elapsed 
+  1.809   0.035   1.944 

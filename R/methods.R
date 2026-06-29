@@ -142,25 +142,25 @@ print.summary.IBGS <- function(x, ...) {
 # Diagnostic plots for an IBGS fit
 #
 # Dispatches to the diagnostic plots: the trace of the criterion sequence
-# (plotICtrace()), the marginal inclusion probabilities (plotVarProb()), the
+# (plotICtrace()), the marginal inclusion probabilities (plotMargProb()), the
 # top-model visit frequencies (plotModelFreq()), the Gelman-Rubin shrink factor
 # (plotGelman()), and the trace autocorrelation (plotAutocorr()).  Several may be
 # requested at once, in which case they are drawn in a multi-panel layout.
 #
 # Arguments:
 #   x     an "IBGS" result
-#   which one or more of "ictrace", "varprob", "modelfreq", "gelman",
+#   which one or more of "ictrace", "margprob", "modelfreq", "gelman",
 #         "autocorr"; default is all five
 #   ...   further graphical parameters, forwarded only when a single panel
 #         is requested
 # Value: x, invisibly
-plot.IBGS <- function(x, which = c("ictrace", "varprob", "modelfreq",
+plot.IBGS <- function(x, which = c("ictrace", "margprob", "modelfreq",
                                    "gelman", "autocorr"), ...) {
-  which <- match.arg(which, c("ictrace", "varprob", "modelfreq",
+  which <- match.arg(which, c("ictrace", "margprob", "modelfreq",
                              "gelman", "autocorr"),
                      several.ok = TRUE)
   draw  <- list(ictrace   = plotICtrace,
-                varprob   = plotVarProb,
+                margprob  = plotMargProb,
                 modelfreq = plotModelFreq,
                 gelman    = plotGelman,
                 autocorr  = plotAutocorr)

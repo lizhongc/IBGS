@@ -1,0 +1,96 @@
+
+R version 4.6.0 (2026-04-24) -- "Because it was There"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(IBGS)
+> source("helper-sim.R")
+> 
+> # Short runs (small n.draws / n.refine) keep the suite fast; the strong signal
+> # means the chain still concentrates on the true model.
+> 
+> # glmIBGS (gaussian) recovers the signal and has IBGS structure
+> set.seed(1)
+> d   <- sim_gauss()
+> fit <- glmIBGS(d$y, d$x, criterion = "BIC", n.refine = 2, n.draws = 150,
++                n.cores = 1)
+> expect_ibgs(fit, ncol(d$x))
+> stopifnot(fit$criterion == "BIC")
+> stopifnot(all(truth_names(d$truth) %in% fit$selected.vars))
+> stopifnot(nrow(fit$coef) == ncol(d$x) + 1L)    # intercept + p rows
+> stopifnot(fit$family == "gaussian")
+> 
+> # glmGibbs (gaussian) runs and ranks the true predictors highly
+> set.seed(2)
+> d   <- sim_gauss(n = 100, p = 20)
+> fit <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120)
+> expect_ibgs(fit, ncol(d$x))
+> expect_recovers(fit, d$truth)
+> 
+> # permute = TRUE (random permutation) and FALSE both recover the signal
+> set.seed(2)
+> d  <- sim_gauss(n = 100, p = 20)
+> ft <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, permute = TRUE)
+> ff <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, permute = FALSE)
+> expect_recovers(ft, d$truth)
+> expect_recovers(ff, d$truth)
+> # permute = TRUE must be reproducible under a fixed seed
+> set.seed(2); a <- glmGibbs(d$y, d$x, n.draws = 120, permute = TRUE)
+> set.seed(2); b <- glmGibbs(d$y, d$x, n.draws = 120, permute = TRUE)
+> stopifnot(isTRUE(all.equal(a$marginal.prob, b$marginal.prob)))
+> 
+> # start = null (default) and full both recover the signal
+> stopifnot(eval(formals(glmGibbs)$start)[1] == "null")   # default is null
+> set.seed(2)
+> d  <- sim_gauss(n = 100, p = 20)
+> sn <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, start = "null")
+> sf <- glmGibbs(d$y, d$x, criterion = "BIC", n.draws = 120, start = "full")
+> expect_recovers(sn, d$truth)
+> expect_recovers(sf, d$truth)
+> # the two starts give different chains (the switch is live)
+> stopifnot(!isTRUE(all.equal(sn$ic.trace, sf$ic.trace)))
+> # null start works for the IBGS path too
+> fi <- glmIBGS(d$y, d$x, criterion = "BIC", n.refine = 2, n.draws = 120,
++               start = "null")
+> expect_recovers(fi, d$truth)
+> 
+> # binomial and poisson families run via both samplers
+> set.seed(3)
+> db <- sim_binom()
+> fb <- glmIBGS(db$y, db$x, family = "binomial", criterion = "BIC",
++               n.refine = 2, n.draws = 150)
+> expect_ibgs(fb, ncol(db$x))
+> stopifnot(fb$family == "binomial")
+> expect_recovers(fb, db$truth)
+> 
+> set.seed(4)
+> dp <- sim_pois()
+> fp <- glmGibbs(dp$y, dp$x, family = "poisson", criterion = "AIC",
++                n.draws = 150)
+> expect_ibgs(fp, ncol(dp$x))
+> stopifnot(fp$family == "poisson")
+> expect_recovers(fp, dp$truth)
+> 
+> # the criterion choice is honoured
+> set.seed(5)
+> d <- sim_gauss(n = 60, p = 10)
+> for (crit in c("AIC", "BIC", "AICc", "exBIC")) {
++   fit <- glmGibbs(d$y, d$x, criterion = crit, n.draws = 60)
++   stopifnot(fit$criterion == crit)
++ }
+> 
+> proc.time()
+   user  system elapsed 
+  5.173   0.025   5.321 

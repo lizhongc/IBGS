@@ -1,0 +1,41 @@
+
+R version 4.6.0 (2026-04-24) -- "Because it was There"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(IBGS)
+> source("helper-sim.R")
+> 
+> # cor.check stops on a duplicated covariate
+> set.seed(41)
+> d  <- sim_gauss(n = 80, p = 10)
+> xx <- cbind(d$x, d$x[, 1])                    # an exact duplicate column
+> expect_err(glmGibbs(d$y, xx, cor.check = 0.999), "highly correlated")
+> 
+> # cor.check = NULL (default) skips the scan
+> set.seed(42)
+> d  <- sim_gauss(n = 80, p = 10)
+> xx <- cbind(d$x, d$x[, 1])
+> stopifnot(inherits(glmGibbs(d$y, xx, criterion = "BIC", n.draws = 60), "IBGS"))
+> 
+> # invalid criterion and family are rejected
+> set.seed(43)
+> d <- sim_gauss(n = 80, p = 10)
+> expect_err(glmGibbs(d$y, d$x, criterion = "ZZZ"), ".")
+> expect_err(glmGibbs(d$y, d$x, family = "weibull"), ".")
+> 
+> proc.time()
+   user  system elapsed 
+  0.113   0.015   0.220 

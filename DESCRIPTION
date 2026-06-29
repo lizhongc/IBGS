@@ -2,7 +2,7 @@ Package: IBGS
 Type: Package
 Title: Iterated Block Gibbs Sampler for Ultrahigh-Dimensional Variable
     Selection and Model Averaging
-Version: 1.1.0
+Version: 1.0.0
 Authors@R:
     person("Lizhong", "Chen", , "chen.l@wehi.edu.au",
            role = c("aut", "cre"))
@@ -22,7 +22,4 @@ Depends:
 Imports:
     graphics,
     stats
-Suggests:
-    testthat (>= 3.0.0)
-Config/testthat/edition: 3
 NeedsCompilation: yes

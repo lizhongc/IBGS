@@ -33,10 +33,10 @@
 typedef struct { uint64_t s[4]; } rngt;
 
 /* Seed the generator from a single 64-bit value. */
-void rngseed(rngt *r, uint64_t seed);
+void rngseed(rngt *, uint64_t);
 
 /* Next uniform double in [0, 1) with 53-bit resolution. */
-double rngunif(rngt *r);
+double rngunif(rngt *);
 
 /* response-family codes shared by the GLM fitter and the samplers */
 #define FAM_GAUSSIAN 0
@@ -54,7 +54,7 @@ double rngunif(rngt *r);
  * collinear columns), else 0.  Shared with the single-model refit in
  * glm.c (glmcoef) for the gaussian OLS solve.
  */
-int cholsolv(double *A, const double *b, double *x, int q);
+int cholsolv(double *, const double *, double *, int);
 
 /*
  * Information criterion from -2*logLik.
@@ -63,7 +63,7 @@ int cholsolv(double *A, const double *b, double *x, int q);
  *   npred : number of predictors excluding the intercept (for exBIC)
  * info codes: 0 = AIC, 1 = BIC, 2 = AICc, 3 = exBIC.
  */
-double icval(double m2ll, int npar, int npred, int n, int info, double gamma, int p0);
+double icval(double, int, int, int, int, double, int);
 
 /*
  * IRLS fit of y on the columns of the design Dfull selected by `active`.  Dfull
@@ -95,7 +95,7 @@ double icval(double m2ll, int npar, int npred, int n, int info, double gamma, in
  *   Dpack : at least n*q        doubles  (active columns gathered contiguously)
  *   Dw    : at least n*q        doubles  (sqrt(w)-scaled design for the BLAS syrk)
  */
-int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, int maxit, double *wq, double *wn, double *Dpack, double *Dw, double *dev2, const double *b0, double *bout);
+int glmirls(int, const double *, const double *, const double *, const int *, int, int, int, double *, double *, double *, double *, double *, const double *, double *);
 
 /*
  * Gaussian OLS residual sum of squares of the active columns, via a Cholesky on
@@ -105,7 +105,7 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
  * negative value if the active sub-block is not positive definite (collinear).
  * Shared with the lme whitened-OLS sampler (lme.c).
  */
-double rsschol(const double *G, const double *Gy, int ptot1, const int *active, int q, double yty, double *Sbuf, double *bbuf);
+double rsschol(const double *, const double *, int, const int *, int, double, double *, double *);
 
 /*
  * Cox kernels (implemented in cox.c).  This family is self-contained: unlike
@@ -126,7 +126,7 @@ double rsschol(const double *G, const double *Gy, int ptot1, const int *active, 
  * Lower is better.  Mirrors icval() but with the Cox parameter counts and the
  * event-based sample size baked in.
  */
-double coxicval(double m2pll, int npred, int d, int info, double gamma, int p0);
+double coxicval(double, int, int, int, double, int);
 
 /*
  * Fit a Cox model by Newton-Raphson on the Efron partial log-likelihood.
@@ -156,7 +156,7 @@ double coxicval(double m2pll, int npred, int d, int info, double gamma, int p0);
  *   wq : at least 3*q*q + 7*q  doubles
  *   wn : at least 2*n          doubles
  */
-int coxfit(const double *time, const int *status, const double *pw, const double *Dfull, const int *active, int n, int q, const int *order, double *wq, double *wn, double *m2pll, const double *b0, double *bout);
+int coxfit(const double *, const int *, const double *, const double *, const int *, int, int, const int *, double *, double *, double *, const double *, double *);
 
 /* ============================================================================
  * Per-thread sampler workspaces.
@@ -192,8 +192,8 @@ typedef struct {
  * allocation failure R_Calloc raises an R error (main thread), so gbwsallc
  * always returns 0 on return.
  */
-int  gbwsallc(gbwst *ws, int capt, int n, int family);
-void gbwsfree(gbwst *ws);
+int  gbwsallc(gbwst *, int, int, int);
+void gbwsfree(gbwst *);
 
 /* (time, index) pair, sorted by time descending to build the Cox risk-set order. */
 typedef struct { double t; int idx; } tit;
@@ -217,8 +217,8 @@ typedef struct {
 
 /* Allocate (R_Calloc, main thread) / free a Cox workspace for up to capt
  * predictors over n rows.  On out of memory R_Calloc raises an R error. */
-int  cxwsallc(cxwst *ws, int capt, int n);
-void cxwsfree(cxwst *ws);
+int  cxwsallc(cxwst *, int, int);
+void cxwsfree(cxwst *);
 
 /*
  * lme sampler workspace.  The lme fit is whitened OLS (no IRLS and no warm-start
@@ -238,8 +238,8 @@ typedef struct {
 
 /* Allocate (R_Calloc, main thread) / free an lme workspace for up to capt
  * columns over n rows.  On out of memory R_Calloc raises an R error. */
-int  lmewsallc(lmewst *ws, int capt, int n);
-void lmewsfree(lmewst *ws);
+int  lmewsallc(lmewst *, int, int);
+void lmewsfree(lmewst *);
 
 /* ============================================================================
  * Metropolis-within-Gibbs samplers (one step runner per family).
@@ -271,7 +271,7 @@ void lmewsfree(lmewst *ws);
  * info codes:   0 = AIC, 1 = BIC, 2 = AICc, 3 = exBIC.
  * Returns 0 on success, 1 on allocation failure.
  */
-int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int fast, int len, double k, double gamma, int p0, int info, int family, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, gbwst *ws);
+int rungibbs(const double *, const double *, const double *, int, int, int, const int *, int, int, int, double, double, int, int, int, int, rngt *, int *, double *, double *, gbwst *);
 
 /*
  * The Cox Metropolis-within-Gibbs sampler (cox.c).  The Cox parallel of
@@ -302,7 +302,7 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
  * info codes: 0 = AIC, 1 = BIC, 2 = AICc, 3 = exBIC.  p0 is the candidate-pool
  * size used by exBIC.  Returns 0 on success, 1 on allocation failure.
  */
-int runcoxgb(const double *time, const int *status, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, cxwst *ws);
+int runcoxgb(const double *, const int *, const double *, const double *, int, int, int, const int *, int, int, double, double, int, int, int, rngt *, int *, double *, double *, cxwst *);
 
 /*
  * The linear-mixed-model fixed-effect Metropolis-within-Gibbs sampler
@@ -330,7 +330,7 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
  * 0 = AIC, 1 = BIC, 2 = AICc, 3 = exBIC.  Returns 0 on success, 1 on allocation
  * failure.
  */
-int runlmegb(const double *ystar, const double *Xstar, const double *istar, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, double ldv0, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, lmewst *ws);
+int runlmegb(const double *, const double *, const double *, int, int, int, const int *, int, int, double, double, int, int, double, int, rngt *, int *, double *, double *, lmewst *);
 
 /* ============================================================================
  * Shared search scratch: types, helpers, and the per-search workspace used by
@@ -342,14 +342,14 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
 typedef struct { double v; int idx; } fit;
 
 /* qsort comparator: fit by v DESCENDING, ties broken by smaller idx first. */
-int ficmpdsc(const void *a, const void *b);
+int ficmpdsc(const void *, const void *);
 
 /* qsort comparator: plain int ascending (used to sort selected column ids). */
-int intcmp(const void *a, const void *b);
+int intcmp(const void *, const void *);
 
 /* Gather the m columns cols[0..m-1] of the n-row column-major matrix src into
  * the caller-provided buffer dst (n x m, column-major). */
-void gathcols(const double *src, int n, const int *cols, int m, double *dst);
+void gathcols(const double *, int, const int *, int, double *);
 
 /* ============================================================================
  * Model-averaging summary of a finished sampler run (glm.c), called by the .Call
@@ -361,13 +361,13 @@ void gathcols(const double *src, int n, const int *cols, int m, double *dst);
 /* Number of models to keep = min(n_req, #distinct criterion values in oic).
  * Lets the wrapper allocate the summary outputs at the exact width.  Returns -1
  * on allocation failure. */
-int summnm(const double *oic, int lenf, int n_req);
+int summnm(const double *, int, int);
 
 /* Tabulate oic[0..lenf-1] into ascending distinct groups: writes the first
  * nm_in groups' distinct value (micic), count (cnt) and a representative sample
  * index (rep, = R's order()/cumsum() pick), and *nm = number written.  Returns
  * 0, or 1 on allocation failure. */
-int summtab(const double *oic, int lenf, int nm_in, double *micic, int *cnt, int *rep, int *nm);
+int summtab(const double *, int, int, double *, int *, int *, int *);
 
 /* Per-family summarizers: refit the best nm models from the recorded run and
  * write coef (nr x nm_in, full length: glm/lme nr = p+1 with intercept row 0,
@@ -375,9 +375,9 @@ int summtab(const double *oic, int lenf, int nm_in, double *micic, int *cnt, int
  * the column-major lenf x (1+ps) indicator matrix; xs[c] is the 0-based original
  * column of omat predictor column c+1.  Each returns 0, or 1 on allocation
  * failure. */
-int glmsumm(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int family, int nm_in, double *coef, double *micout, double *frqout, int *nm);
-int coxsumm(const double *time, const int *status, const double *pw, const double *X, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int nm_in, double *coef, double *micout, double *frqout, int *nm);
-int lmesumm(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, const int *omat, const double *oic, int lenf, int nm_in, double *coef, double *micout, double *frqout, int *nm);
+int glmsumm(const double *, const double *, const double *, int, int, const int *, int, const int *, const double *, int, int, int, double *, double *, double *, int *);
+int coxsumm(const double *, const int *, const double *, const double *, int, int, const int *, int, const int *, const double *, int, int, double *, double *, double *, int *);
+int lmesumm(const double *, const double *, const double *, int, int, const int *, int, const int *, const double *, int, int, double *, double *, double *, int *);
 
 /*
  * Per-search workspace: every scratch buffer one *ibgs* search call needs,
@@ -413,8 +413,8 @@ typedef struct {
  * srwsallc returns 0 on success and 1 on any allocation failure (freeing
  * whatever it had taken); inS2 is zero-initialised.
  */
-int  srwsallc(srwst *ws, int p, int n);
-void srwsfree(srwst *ws);
+int  srwsallc(srwst *, int, int);
+void srwsfree(srwst *);
 
 /* ============================================================================
  * Iterated-block-Gibbs orchestration (one search + one standalone sampler per
@@ -440,8 +440,8 @@ void srwsfree(srwst *ws);
  *   sel   : OUTPUT int[ps]               1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int ibgssel(const double *y, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int nthr, int *xs, int *ps, int *lenf);
-int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, int fast, int start_full, double k, double gamma, int info, int family, int *omat, double *oic, double *vprob, int *sel);
+int ibgssel(const double *, const double *, const double *, int, int, int, int, int, double, int, int, int, int, double, double, int, int, int, int *, int *, int *);
+int ibgsrun(const double *, const double *, const double *, int, int, const int *, int, int, int, int, int, double, double, int, int, int *, double *, double *, int *);
 
 /*
  * Standalone (non-block) restricted Gibbs sampler over all p predictors, model
@@ -452,7 +452,7 @@ int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, co
  *   vpbuf  : double[p]
  * Returns 0 on success, 1 on failure.
  */
-int gibbssam(const double *y, const double *X, const double *pw, int n, int p, int nvars, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int *mbuf, double *sicbuf, double *vpbuf);
+int gibbssam(const double *, const double *, const double *, int, int, int, int, int, int, int, double, double, int, int, int *, double *, double *);
 
 /*
  * Single-model GLM coefficient refit behind the glm_coef() .Call wrapper.  Builds
@@ -469,7 +469,7 @@ int gibbssam(const double *y, const double *X, const double *pw, int n, int p, i
  * Returns nothing (writes into bout).  Allocates the design and OLS/IRLS scratch
  * with R_Calloc/R_Free (main thread only); does no SEXP handling.
  */
-void glmcoef(const double *y, const double *X, const double *pw, int n, int q, int family, double *bout);
+void glmcoef(const double *, const double *, const double *, int, int, int, double *);
 
 /*
  * Cox iterated block Gibbs search (cox.c), split into select + fill phases (see
@@ -485,8 +485,8 @@ void glmcoef(const double *y, const double *X, const double *pw, int n, int q, i
  *   sel   : OUTPUT int[ps] 1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int coxibgsel(const double *time, const int *status, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, int nthr, int *xs, int *ps, int *lenf);
-int coxibgrun(const double *time, const int *status, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, int *omat, double *oic, double *vprob, int *sel);
+int coxibgsel(const double *, const int *, const double *, const double *, int, int, int, int, int, double, int, int, int, double, double, int, int, int *, int *, int *);
+int coxibgrun(const double *, const int *, const double *, const double *, int, int, const int *, int, int, int, int, double, double, int, int *, double *, double *, int *);
 
 /*
  * Standalone (non-block) restricted Cox Gibbs sampler over all p predictors,
@@ -496,7 +496,7 @@ int coxibgrun(const double *time, const int *status, const double *X, const doub
  *   vpbuf  : double[p]
  * Returns 0 on success, 1 on failure.
  */
-int coxgbsam(const double *time, const int *status, const double *X, const double *pw, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, int *mbuf, double *sicbuf, double *vpbuf);
+int coxgbsam(const double *, const int *, const double *, const double *, int, int, int, int, int, int, double, double, int, int *, double *, double *);
 
 /*
  * Single-model Cox coefficient refit behind the cox_coef() .Call wrapper.  Fits
@@ -514,7 +514,7 @@ int coxgbsam(const double *time, const int *status, const double *X, const doubl
  * once (tit/ticmpdsc) and allocates its Newton scratch with R_Calloc/R_Free (main
  * thread only); does no SEXP handling.
  */
-void coxcoef(const double *time, const int *status, const double *pw, const double *X, int n, int q, double *bout, double *m2pll);
+void coxcoef(const double *, const int *, const double *, const double *, int, int, double *, double *);
 
 /*
  * lme iterated block Gibbs search (lme.c), split into select + fill phases (see
@@ -532,15 +532,15 @@ void coxcoef(const double *time, const int *status, const double *pw, const doub
  *   sel   : OUTPUT int[ps] 1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xs, int *ps, int *lenf);
-int lmeibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel);
+int lmeibgsel(const double *, const double *, const double *, int, int, int, int, int, double, int, int, int, double, double, int, double, int, int *, int *, int *);
+int lmeibgrun(const double *, const double *, const double *, int, int, const int *, int, int, int, int, double, double, int, double, int *, double *, double *, int *);
 
 /*
  * Standalone (non-block) lme sampler over all p whitened predictors, capped at
  * nvars.  Writes into caller-provided buffers (mbuf: int[len*(1+p)],
  * sicbuf: double[len], vpbuf: double[p]).  Returns 0 on success, 1 on failure.
  */
-int lmegbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf);
+int lmegbsam(const double *, const double *, const double *, int, int, int, int, int, int, double, double, int, double, int *, double *, double *);
 
 /*
  * Single-model whitened-OLS coefficient refit behind the lme_coef() .Call
@@ -556,7 +556,7 @@ int lmegbsam(const double *ystar, const double *Xstar, const double *istar, int 
  * Returns nothing (writes into bout).  Allocates its Gram/solve scratch with
  * R_Calloc/R_Free (main thread only); does no SEXP handling.
  */
-void lmecoef(const double *ystar, const double *D, int n, int q, double *bout);
+void lmecoef(const double *, const double *, int, int, double *);
 
 /* ============================================================================
  * Convergence diagnostics of the recorded information-criterion sequence
@@ -567,26 +567,25 @@ void lmecoef(const double *ystar, const double *D, int n, int q, double *bout);
  * ========================================================================== */
 
 /* Lagged autocorrelations out[0..lag_max] (out[0] = 1); like stats::acf. */
-void acf_vec(const double *x, int n, int lag_max, double *out);
+void acf_vec(const double *, int, int, double *);
 
 /* Spectral density at zero frequency via an AR(aic) fit; coda::spectrum0.ar.
  * *order (if non-NULL) receives the selected AR order. */
-double spectrum0_ar(const double *x, int n, int *order);
+double spectrum0_ar(const double *, int, int *);
 
 /* Effective sample size n*var(x)/spectrum0.ar(x); coda::effectiveSize. */
-double ess_val(const double *x, int n);
+double ess_val(const double *, int);
 
 /* Geweke z comparing the first frac1 and last frac2 of the chain;
  * coda::geweke.diag. */
-double geweke_z(const double *x, int n, double frac1, double frac2);
+double geweke_z(const double *, int, double, double);
 
 /* Split-chain (m segments) univariate Gelman-Rubin PSRF point estimate (*psrf)
  * and 97.5% upper limit (*upper); coda::gelman.diag. */
-void gelman1d(const double *x, int n, int m, double *psrf, double *upper);
+void gelman1d(const double *, int, int, double *, double *);
 
 /* Evolving shrink factor for gelman.plot: gelman1d over growing prefixes.
  * Writes *nb usable breakpoints into iters/med/upper (caller-sized to nbin). */
-void gelman_shrink(const double *x, int n, int m, int nbin,
-                   double *iters, double *med, double *upper, int *nb);
+void gelman_shrink(const double *, int, int, int, double *, double *, double *, int *);
 
 #endif /* IBGS_IBGS_H */

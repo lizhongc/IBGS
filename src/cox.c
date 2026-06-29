@@ -77,24 +77,31 @@
 static int coxchols(double *A, const double *b, double *x, int q)
 {
     int r, s, m;
-    for (r = 0; r < q; r++) {
-        for (s = 0; s <= r; s++) {
+    for (r = 0; r < q; r++)
+    {
+        for (s = 0; s <= r; s++)
+        {
             double sum = A[r * q + s];
             for (m = 0; m < s; m++) sum -= A[r * q + m] * A[s * q + m];
-            if (r == s) {
+            if (r == s)
+            {
                 if (sum <= 1e-12) return 1;          /* not PD -> singular model */
                 A[r * q + r] = sqrt(sum);
-            } else {
+            }
+            else
+            {
                 A[r * q + s] = sum / A[s * q + s];
             }
         }
     }
-    for (r = 0; r < q; r++) {                 /* forward solve L u = b */
+    for (r = 0; r < q; r++)                 /* forward solve L u = b */
+    {
         double sum = b[r];
         for (m = 0; m < r; m++) sum -= A[r * q + m] * x[m];
         x[r] = sum / A[r * q + r];
     }
-    for (r = q - 1; r >= 0; r--) {            /* back solve L' x = u */
+    for (r = q - 1; r >= 0; r--)            /* back solve L' x = u */
+    {
         double sum = x[r];
         for (m = r + 1; m < q; m++) sum -= A[m * q + r] * x[m];
         x[r] = sum / A[r * q + r];
@@ -106,7 +113,8 @@ double coxicval(double m2pll, int npred, int d, int info, double gamma, int p0)
 {
     /* Cox has no intercept and no dispersion, so the parameter count is npred.
      * The effective sample size is the number of events d (BIC/AICc/exBIC). */
-    switch (info) {
+    switch (info)
+    {
     case 0: return m2pll + 2.0 * npred;                                        /* AIC   */
     case 1: return m2pll + log((double) d) * npred;                            /* BIC   */
     case 2: return m2pll + 2.0 * npred + 2.0 * npred * (npred + 1.0) / ((double) d - npred - 1.0); /* AICc */
@@ -142,14 +150,18 @@ int coxfit(const double *time, const int *status, const double *pw, const double
     double loglik = 0.0, prev = 0.0;
     int conv = 0;
 
-    for (it = 0; it < COX_MAXIT; it++) {
+    for (it = 0; it < COX_MAXIT; it++)
+    {
         /* linear predictor and its exponential for every observation */
         for (i = 0; i < n; i++) eta[i] = 0.0;
-        for (a = 0; a < q; a++) {
-            const double *Da = DCOL(a); double ba = beta[a];
+        for (a = 0; a < q; a++)
+        {
+            const double *Da = DCOL(a);
+            double ba = beta[a];
             for (i = 0; i < n; i++) eta[i] += Da[i] * ba;
         }
-        for (i = 0; i < n; i++) {
+        for (i = 0; i < n; i++)
+        {
             double e = eta[i];
             if (e >  ETA_CLAMP) e =  ETA_CLAMP;
             if (e < -ETA_CLAMP) e = -ETA_CLAMP;
@@ -159,35 +171,53 @@ int coxfit(const double *time, const int *status, const double *pw, const double
 
         /* zero the accumulators that persist across the whole sweep */
         loglik = 0.0;
-        for (a = 0; a < q; a++) { U[a] = 0.0; Sx[a] = 0.0; }
-        for (a = 0; a < qq; a++) { Imat[a] = 0.0; Sxx[a] = 0.0; }
+        for (a = 0; a < q; a++)
+        {
+            U[a] = 0.0;
+            Sx[a] = 0.0;
+        }
+        for (a = 0; a < qq; a++)
+        {
+            Imat[a] = 0.0;
+            Sxx[a] = 0.0;
+        }
         double S = 0.0;
 
         /* tied-death accumulators (reset after each tie group is processed) */
         double SD = 0.0, dw = 0.0, ldeath = 0.0;
         int dcount = 0;
-        for (a = 0; a < q; a++) { SDx[a] = 0.0; dnum[a] = 0.0; }
+        for (a = 0; a < q; a++)
+        {
+            SDx[a] = 0.0;
+            dnum[a] = 0.0;
+        }
         for (a = 0; a < qq; a++) SDxx[a] = 0.0;
 
         /* sweep observations in DESCENDING time order; order[] is sorted so that
          * equal times are consecutive.  When the time changes we have a complete
          * risk set R(t) for the just-finished group, so we process its events. */
-        for (idx = 0; idx < n; idx++) {
+        for (idx = 0; idx < n; idx++)
+        {
             int j  = order[idx];
             double wr = pw[j] * r[j];
 
             /* add j to the running risk-set moments (R(t) grows as time falls) */
             S += wr;
-            for (a = 0; a < q; a++) {
+            for (a = 0; a < q; a++)
+            {
                 double xa = DCOL(a)[j];
                 Sx[a] += wr * xa;
                 double *Sxxa = Sxx + (size_t) a * q;
                 for (b = 0; b < q; b++) Sxxa[b] += wr * xa * DCOL(b)[j];
             }
-            if (status[j]) {                 /* accumulate the tied-death sums */
-                dcount++; dw += pw[j]; ldeath += pw[j] * eta[j];
+            if (status[j])                 /* accumulate the tied-death sums */
+            {
+                dcount++;
+                dw += pw[j];
+                ldeath += pw[j] * eta[j];
                 SD += wr;
-                for (a = 0; a < q; a++) {
+                for (a = 0; a < q; a++)
+                {
                     double xa = DCOL(a)[j];
                     dnum[a]  += pw[j] * xa;
                     SDx[a]   += wr * xa;
@@ -200,12 +230,14 @@ int coxfit(const double *time, const int *status, const double *pw, const double
              * differs).  order is descending, so a new index with a smaller time
              * closes the group. */
             int last = (idx == n - 1) || (time[order[idx + 1]] != time[j]);
-            if (last && dcount > 0) {
+            if (last && dcount > 0)
+            {
                 /* Efron tie contribution to loglik, gradient U and information I */
                 double phi = dw / (double) dcount;
                 loglik += ldeath;
                 for (a = 0; a < q; a++) U[a] += dnum[a];
-                for (int l = 0; l < dcount; l++) {
+                for (int l = 0; l < dcount; l++)
+                {
                     double frac  = (double) l / (double) dcount;
                     double denom = S - frac * SD;
                     if (denom < 1e-300) denom = 1e-300;
@@ -213,38 +245,60 @@ int coxfit(const double *time, const int *status, const double *pw, const double
                     for (a = 0; a < q; a++) numx[a] = Sx[a] - frac * SDx[a];
                     double inv = 1.0 / denom;
                     for (a = 0; a < q; a++) U[a] -= phi * numx[a] * inv;
-                    for (a = 0; a < q; a++) {
+                    for (a = 0; a < q; a++)
+                    {
                         double *Ia   = Imat + (size_t) a * q;
                         double *Sxxa = Sxx  + (size_t) a * q;
                         double *SDxxa= SDxx + (size_t) a * q;
                         double na = numx[a];
-                        for (b = 0; b < q; b++) {
+                        for (b = 0; b < q; b++)
+                        {
                             double mxx = Sxxa[b] - frac * SDxxa[b];
                             Ia[b] += phi * (mxx * inv - na * numx[b] * inv * inv);
                         }
                     }
                 }
                 /* reset the death accumulators for the next tie group */
-                SD = 0.0; dw = 0.0; ldeath = 0.0; dcount = 0;
-                for (a = 0; a < q; a++) { SDx[a] = 0.0; dnum[a] = 0.0; }
+                SD = 0.0;
+                dw = 0.0;
+                ldeath = 0.0;
+                dcount = 0;
+                for (a = 0; a < q; a++)
+                {
+                    SDx[a] = 0.0;
+                    dnum[a] = 0.0;
+                }
                 for (a = 0; a < qq; a++) SDxx[a] = 0.0;
-            } else if (last) {
+            }
+            else if (last)
+            {
                 /* group with no events: nothing to score, just clear death sums
                  * (they are zero already, but keep the invariant explicit) */
-                SD = 0.0; dw = 0.0; ldeath = 0.0; dcount = 0;
-                for (a = 0; a < q; a++) { SDx[a] = 0.0; dnum[a] = 0.0; }
+                SD = 0.0;
+                dw = 0.0;
+                ldeath = 0.0;
+                dcount = 0;
+                for (a = 0; a < q; a++)
+                {
+                    SDx[a] = 0.0;
+                    dnum[a] = 0.0;
+                }
             }
         }
 
         /* convergence on the partial log-likelihood */
-        if (it > 0 && fabs(loglik - prev) < COX_TOL * (fabs(loglik) + COX_TOL)) {
+        if (it > 0 && fabs(loglik - prev) < COX_TOL * (fabs(loglik) + COX_TOL))
+        {
             conv = 1;
             break;
         }
         prev = loglik;
 
         /* Newton step: solve I delta = U, then beta += delta */
-        if (coxchols(Imat, U, delta, q)) { return 1; }   /* singular */
+        if (coxchols(Imat, U, delta, q))   /* singular */
+        {
+            return 1;
+        }
         for (a = 0; a < q; a++) beta[a] += delta[a];
     }
 
@@ -252,7 +306,8 @@ int coxfit(const double *time, const int *status, const double *pw, const double
     #undef DCOL
 
     *m2pll = -2.0 * loglik;
-    if (bout) for (a = 0; a < q; a++) bout[a] = beta[a];
+    if (bout)
+        for (a = 0; a < q; a++) bout[a] = beta[a];
     return 0;
 }
 /*
@@ -299,8 +354,11 @@ static int ticmpdsc(const void *a, const void *b)
 static double coxmodic(const double *time, const int *status, const double *pw, const double *X, const int *active, int n, int q, const int *order, double *wq, double *wn, int d, int info, double gamma, int p0, const double *b0, double *bprop, int *ok)
 {
     double m2pll;
-    if (coxfit(time, status, pw, X, active, n, q, order, wq, wn,
-               &m2pll, b0, bprop)) { *ok = 0; return 0.0; }
+    if (coxfit(time, status, pw, X, active, n, q, order, wq, wn, &m2pll, b0, bprop))
+    {
+        *ok = 0;
+        return 0.0;
+    }
     *ok = 1;
     return coxicval(m2pll, q, d, info, gamma, p0);
 }
@@ -366,7 +424,8 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
     cxwst  wsl;
     cxwst *ws    = wsi;
     int    owned = 0;
-    if (!ws) {
+    if (!ws)
+    {
         cxwsallc(&wsl, ptot, n);
         ws    = &wsl;
         owned = 1;
@@ -386,7 +445,11 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
      * calloc gave the same zero start). */
     for (a = 0; a < ptot; a++) bfull[a] = 0.0;
 
-    for (i = 0; i < n; i++) { pairs[i].t = time[i]; pairs[i].idx = i; }
+    for (i = 0; i < n; i++)
+    {
+        pairs[i].t = time[i];
+        pairs[i].idx = i;
+    }
     qsort(pairs, n, sizeof(tit), ticmpdsc);
     for (i = 0; i < n; i++) order[i] = pairs[i].idx;
 
@@ -413,16 +476,26 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
 
     /* ----- initial state ----- */
     int nsel = 0;
-    for (a = 0; a < p1; a++)    { inc[a] = smod[a] ? 1 : 0; nsel += inc[a]; }
-    for (a = p1; a < ptot; a++) { inc[a] = 1; nsel += 1; }
+    for (a = 0; a < p1; a++)
+    {
+        inc[a] = smod[a] ? 1 : 0;
+        nsel += inc[a];
+    }
+    for (a = p1; a < ptot; a++)
+    {
+        inc[a] = 1;
+        nsel += 1;
+    }
 
     int q, ok = 0;
     BUILD_ACTIVE(q);
     double curic = R_PosInf;
     if (q > 0)
-        curic = coxmodic(time, status, pw, X, active, n, q, order,
-                          wq, wn, d, info, gamma, p0, b0, bprop, &ok);
-    if (!ok) curic = R_PosInf; else COMMIT_BETA(q);
+        curic = coxmodic(time, status, pw, X, active, n, q, order, wq, wn, d, info, gamma, p0, b0, bprop, &ok);
+    if (!ok)
+        curic = R_PosInf;
+    else
+        COMMIT_BETA(q);
 
     if (ofrq)
         for (a = 0; a < p1; a++) ofrq[a] = 0.0;
@@ -430,19 +503,25 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
     /* 2*len sweeps: first len are burn-in (discarded), second len recorded.
      * One sweep = p1 single-coordinate flip attempts. */
     int nsweep = 2 * len;
-    for (int sw = 0; sw < nsweep; sw++) {
+    for (int sw = 0; sw < nsweep; sw++)
+    {
         /* perm = TRUE: visit each of the p1 toggleable coordinates exactly once
          * per sweep, in a fresh random order (Fisher-Yates), i.e. without
          * replacement.  perm = FALSE: the fixed 0..p1-1 systematic sweep. */
-        if (perm) {
+        if (perm)
+        {
             for (int t = 0; t < p1; t++) ord[t] = t;
-            for (int t = p1 - 1; t > 0; t--) {
+            for (int t = p1 - 1; t > 0; t--)
+            {
                 int u = (int) (UNIF(rng) * (t + 1));
                 if (u > t) u = t;                 /* guard the UNIF==~1 edge */
-                int tmp = ord[t]; ord[t] = ord[u]; ord[u] = tmp;
+                int tmp = ord[t];
+                ord[t] = ord[u];
+                ord[u] = tmp;
             }
         }
-        for (int step = 0; step < p1; step++) {
+        for (int step = 0; step < p1; step++)
+        {
             int j = perm ? ord[step] : step;
 
             /* reject moves that would empty the model or exceed the size cap */
@@ -452,16 +531,16 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
             inc[j] ^= 1;                       /* tentatively flip coordinate j */
             int pq;
             BUILD_ACTIVE(pq);
-            double propic = coxmodic(time, status, pw, X, active, n, pq,
-                                      order, wq, wn, d, info, gamma,
-                                      p0, b0, bprop, &ok);
+            double propic = coxmodic(time, status, pw, X, active, n, pq, order, wq, wn, d, info, gamma, p0, b0, bprop, &ok);
 
             int accept = 0;
-            if (ok) {
+            if (ok)
+            {
                 double A = exp(k * (curic - propic));
                 if (A > 1.0) A = 1.0;
                 if (UNIF(rng) < A) accept = 1;
-                if (accept) {
+                if (accept)
+                {
                     curic = propic;
                     nsel   = pnsel;
                     COMMIT_BETA(pq);
@@ -471,9 +550,11 @@ int runcoxgb(const double *time, const int *status, const double *X, const doubl
         }
 
         /* record the post-burn-in samples */
-        if (sw >= len) {
+        if (sw >= len)
+        {
             int row = sw - len;
-            if (omat) {
+            if (omat)
+            {
                 omat[row] = 1;           /* leading constant column */
                 for (a = 0; a < ptot; a++)
                     omat[(a + 1) * len + row] = inc[a];
@@ -531,11 +612,13 @@ static int coxnblks(int nS1, int H, int d, int nS2)
  * block (fixed before any thread starts -> reproducible parallel screen). */
 static void coxdrwbl(int nS1, int h, int *assign, uint64_t *seeds)
 {
-    for (int i = 0; i < nS1; i++) {
+    for (int i = 0; i < nS1; i++)
+    {
         int a = (int) (unif_rand() * h);
         assign[i] = (a >= h) ? h - 1 : a;
     }
-    for (int b = 0; b < h; b++) {
+    for (int b = 0; b < h; b++)
+    {
         uint64_t hi = (uint64_t) (unif_rand() * 4294967296.0);
         uint64_t lo = (uint64_t) (unif_rand() * 4294967296.0);
         seeds[b] = (hi << 32) ^ lo ^ (0x9E3779B97F4A7C15ULL * (uint64_t) (b + 1));
@@ -557,7 +640,8 @@ static int coxscrbl(const double *time, const int *status, const double *X, cons
 
     for (int i = 0; i < nS1; i++) sz[assign[i]]++;
     off[0] = 0;
-    for (int b = 0; b < h; b++) {
+    for (int b = 0; b < h; b++)
+    {
         off[b + 1] = off[b] + sz[b];
         cur[b]     = off[b];
     }
@@ -571,31 +655,33 @@ static int coxscrbl(const double *time, const int *status, const double *X, cons
     /* one reusable workspace per thread, allocated up front on the main thread
      * (R_Calloc is not thread-safe), so the parallel loop allocates nothing */
     int nws = nthr > 0 ? nthr : 1;
-#ifndef _OPENMP
+    #ifndef _OPENMP
     nws = 1;
-#endif
+    #endif
     cxwst *wsa = R_Calloc((size_t) nws, cxwst);
     for (int t = 0; t < nws; t++) cxwsallc(&wsa[t], capt, n);
 
     int fail = 0;
-#ifdef _OPENMP
+    #ifdef _OPENMP
     #pragma omp parallel for num_threads(nthr) schedule(dynamic) shared(fail)
-#endif
-    for (int b = 0; b < h; b++) {
+    #endif
+    for (int b = 0; b < h; b++)
+    {
         int pb = sz[b];
         if (pb <= 0) continue;
 
-#ifdef _OPENMP
+        #ifdef _OPENMP
         cxwst *ws = &wsa[omp_get_thread_num()];
-#else
+        #else
         cxwst *ws = &wsa[0];
-#endif
+        #endif
         int    *bcols = ws->bcols;
         int    *s0    = ws->s0;
         double *fr    = ws->fr;
         double *Xb    = ws->Xb;
 
-        for (int c = 0; c < pb; c++) {
+        for (int c = 0; c < pb; c++)
+        {
             bcols[c] = S1[pos[off[b] + c]];
             s0[c]    = start_full ? 1 : 0;
         }
@@ -605,15 +691,16 @@ static int coxscrbl(const double *time, const int *status, const double *X, cons
 
         rngt rng;
         rngseed(&rng, seeds[b]);
-        int rc = runcoxgb(time, status, Xb, pw, n, pb, nS2, s0, perm,
-                          len, k, gamma, p0, info, pb + nS2, &rng, NULL, fr,
-                          NULL, ws);
-        if (rc) {
-#ifdef _OPENMP
+        int rc = runcoxgb(time, status, Xb, pw, n, pb, nS2, s0, perm, len, k, gamma, p0, info, pb + nS2, &rng, NULL, fr, NULL, ws);
+        if (rc)
+        {
+            #ifdef _OPENMP
             #pragma omp atomic write
-#endif
+            #endif
             fail = 1;
-        } else {
+        }
+        else
+        {
             for (int c = 0; c < pb; c++)
                 vfreq[S1[pos[off[b] + c]]] = fr[c];
         }
@@ -641,9 +728,7 @@ int coxgbsam(const double *time, const int *status, const double *X, const doubl
     if (!s0) return 1;
     for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
-    int fail = runcoxgb(time, status, X, pw, n, p, 0, s0, perm, len, k,
-                        gamma, p, info, nvars, /*rng=*/NULL, mbuf, vpbuf,
-                        sicbuf, /*ws=*/NULL);
+    int fail = runcoxgb(time, status, X, pw, n, p, 0, s0, perm, len, k, gamma, p, info, nvars, /*rng=*/NULL, mbuf, vpbuf, sicbuf, /*ws=*/NULL);
     free(s0);
     return fail;
 }
@@ -656,9 +741,9 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
     int d = 0;
     for (int i = 0; i < n; i++) d += (status[i] != 0);
 
-#ifdef _OPENMP
+    #ifdef _OPENMP
     if (nthr <= 0) nthr = omp_get_max_threads();
-#endif
+    #endif
 
     /* one per-search workspace, reused across every iteration and the final
      * screening (the long run that records the outputs is done by coxibgrun) */
@@ -673,21 +758,21 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
     int nS2 = 0, fail = 0;
 
     /* ---- refinement iterations (screen -> select -> threshold) ---- */
-    for (int iter = 1; iter < niter && !fail; iter++) {
+    for (int iter = 1; iter < niter && !fail; iter++)
+    {
         int nS1 = 0;
         for (int j = 0; j < p; j++) if (!inS2[j]) S1[nS1++] = j;
 
         int h = coxnblks(nS1, H, d, nS2);
         coxdrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = coxscrbl(time, status, X, pw, n, S1, nS1, S2, nS2, h,
-                        perm, start_full, len, k, gamma, p0, info, nthr, assign,
-                        ws.seeds, vfreq);
+        fail = coxscrbl(time, status, X, pw, n, S1, nS1, S2, nS2, h, perm, start_full, len, k, gamma, p0, info, nthr, assign, ws.seeds, vfreq);
         if (fail) break;
 
         int kk = (kapp < nS1) ? kapp : nS1;
         fit *arr = ws.arr;
-        for (int i = 0; i < nS1; i++) {
+        for (int i = 0; i < nS1; i++)
+        {
             arr[i].v   = vfreq[S1[i]];
             arr[i].idx = S1[i];
         }
@@ -704,16 +789,17 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
         double *fr = ws.fr;
         gathcols(X, n, xs, ps, Xs);
         for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
-        fail = runcoxgb(time, status, Xs, pw, n, ps, 0, s0, perm, len, k,
-                        gamma, p0, info, ps, NULL, NULL, fr, NULL, NULL);
+        fail = runcoxgb(time, status, Xs, pw, n, ps, 0, s0, perm, len, k, gamma, p0, info, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
 
         int cnt = 0;
         for (int i = 0; i < ps; i++) if (fr[i] > tau) cnt++;
         memset(inS2, 0, (size_t) p * sizeof(int));
         nS2 = 0;
-        for (int i = 0; i < ps; i++) {
-            if (cnt > 1 ? (fr[i] > tau) : 1) {
+        for (int i = 0; i < ps; i++)
+        {
+            if (cnt > 1 ? (fr[i] > tau) : 1)
+            {
                 S2[nS2] = xs[i];
                 inS2[xs[i]] = 1;
                 nS2++;
@@ -727,23 +813,24 @@ int coxibgsel(const double *time, const int *status, const double *X, const doub
     *lfout = 4 * len;
     int ps = 0;
 
-    if (!fail) {
+    if (!fail)
+    {
         int nS1 = 0;
         for (int j = 0; j < p; j++) if (!inS2[j]) S1[nS1++] = j;
 
         int h = coxnblks(nS1, H, d, nS2);
         coxdrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = coxscrbl(time, status, X, pw, n, S1, nS1, S2, nS2,
-                        h, perm, start_full, len, k, gamma, p0, info, nthr,
-                        assign, ws.seeds, vfreq);
+        fail = coxscrbl(time, status, X, pw, n, S1, nS1, S2, nS2, h, perm, start_full, len, k, gamma, p0, info, nthr, assign, ws.seeds, vfreq);
 
-        if (!fail) {
+        if (!fail)
+        {
             int kk = (kapp < nS1) ? kapp : nS1;
             ps = kk + nS2;
             fit  *arr = ws.arr;
             int  *xs  = xsout;   /* build the candidate set directly into the caller buffer (ps <= p) */
-            for (int i = 0; i < nS1; i++) {
+            for (int i = 0; i < nS1; i++)
+            {
                 arr[i].v   = vfreq[S1[i]];
                 arr[i].idx = S1[i];
             }
@@ -783,9 +870,11 @@ int coxibgrun(const double *time, const int *status, const double *X, const doub
     for (int i = 0; i < ps; i++) s0[i] = 1;
     int fail = runcoxgb(time, status, Xs, pw, n, ps, 0, s0, perm, lenf, k, gamma, p, info, ps, NULL, omat, fr, oic, NULL);
 
-    if (!fail) {
+    if (!fail)
+    {
         for (int j = 0; j < p; j++) vprob[j] = 0.0;
-        for (int i = 0; i < ps; i++) {
+        for (int i = 0; i < ps; i++)
+        {
             vprob[xs[i]] = fr[i];
             sel[i]       = xs[i] + 1;
         }
@@ -815,7 +904,8 @@ void coxcoef(const double *time, const int *status, const double *pw, const doub
     double *wn = R_Calloc((size_t) 2 * n, double);
 
     for (int a = 0; a < q; a++) active[a] = a;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
+    {
         pairs[i].t = time[i];
         pairs[i].idx = i;
     }
@@ -826,8 +916,10 @@ void coxcoef(const double *time, const int *status, const double *pw, const doub
 
     /* a rank-deficient refit can yield non-finite coefficients; zero them so
      * predictions never see NaN. */
-    for (int a = 0; a < q; a++) {
-        if (!R_FINITE(bout[a])) {
+    for (int a = 0; a < q; a++)
+    {
+        if (!R_FINITE(bout[a]))
+        {
             for (int c = 0; c < q; c++) bout[c] = 0.0;
             *m2pll = 0.0;
             break;
@@ -856,7 +948,8 @@ int coxsumm(const double *time, const int *status, const double *pw, const doubl
     double *Xact = (double *) malloc((size_t) n * cap * sizeof(double));
     double *bout = (double *) malloc((size_t) cap * sizeof(double));
     double m2pll = 0.0;
-    if (!cnt || !rep || !act || !Xact || !bout) {
+    if (!cnt || !rep || !act || !Xact || !bout)
+    {
         free(cnt);
         free(rep);
         free(act);
@@ -864,7 +957,8 @@ int coxsumm(const double *time, const int *status, const double *pw, const doubl
         free(bout);
         return 1;
     }
-    if (summtab(oic, lenf, nm_in, micout, cnt, rep, nm)) {
+    if (summtab(oic, lenf, nm_in, micout, cnt, rep, nm))
+    {
         free(cnt);
         free(rep);
         free(act);
@@ -874,10 +968,13 @@ int coxsumm(const double *time, const int *status, const double *pw, const doubl
     }
     int m = *nm;
     for (size_t t = 0; t < (size_t) nr * m; t++) coef[t] = 0.0;
-    for (int i = 0; i < m; i++) {
+    for (int i = 0; i < m; i++)
+    {
         int q = 0;
-        for (int c = 1; c <= ps; c++) {
-            if (omat[(size_t) rep[i] + (size_t) c * lenf] == 1) {
+        for (int c = 1; c <= ps; c++)
+        {
+            if (omat[(size_t) rep[i] + (size_t) c * lenf] == 1)
+            {
                 act[q] = xs[c - 1];
                 q++;
             }
