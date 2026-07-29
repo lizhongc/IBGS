@@ -11,17 +11,9 @@
  */
 #include "ibgs.h"
 
-#include <R.h>
-#include <Rmath.h>
 #define USE_FC_LEN_T
 #include <R_ext/BLAS.h>
 #include <R_ext/Lapack.h>
-#include <math.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 
 /* FCONE passes the hidden Fortran string-length arguments to the BLAS character
  * flags (no-op on toolchains without USE_FC_LEN_T). */
@@ -198,7 +190,7 @@ static double glmllconst(int family, const double *y, const double *pw, int n)
     return -2.0 * c;
 }
 
-int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, int maxit, double *wq, double *wn, double *Dpack, double *Dw, double *dev2, const double *b0, double *bout)
+int glmirls(int family, const double *y, const double *pw, const double *Dfull, const int *active, int n, int q, int maxit, double *wq, double *wn, double *Dpack, double *Dw, double *dev2, const double *b0, double *bout, const double *cwz)
 {
     double *XtWX    = wq;                  /* q x q */
     double *XtWz    = wq + q * q;          /* q     */
@@ -212,6 +204,13 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
 
     int i, a, it;
     const double d_one = 1.0, d_zero = 0.0;
+
+    /* Cached first-iteration weights, when the caller has them (see the header):
+     * the working response u = w*z that the gemv needs, and the sqrt(w) the syrk
+     * design is scaled by.  These are the only two quantities the first iteration
+     * takes from eta, so a cached first step needs nothing else. */
+    const double *cu  = cwz;
+    const double *csw = cwz ? cwz + n : NULL;
 
     /* Gather the q active columns of the shared block design Dfull = [1|X] into a
      * contiguous n x q scratch ONCE per fit (column 0 = active[0] = intercept).
@@ -227,7 +226,13 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
      *   cold start: the usual GLM starting values -- a smoothed empirical logit
      *     for binomial, log(y+0.1) for poisson -- which keep eta finite even for
      *     y at the boundary. */
-    if (b0 != NULL)
+    if (cwz != NULL)
+    {
+        /* the cache already carries everything the first iteration derives from
+         * eta, and eta is overwritten from the Newton step before it is read
+         * again, so the warm-start pass has nothing left to compute */
+    }
+    else if (b0 != NULL)
     {
         for (i = 0; i < n; i++) eta[i] = 0.0;
         for (a = 0; a < q; a++)
@@ -261,31 +266,35 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
          * response z = eta + (y - mu)/mueta.  For both families mueta == var,
          * so w collapses to pw*var.  The clamps keep mu off the open boundary
          * (and bound eta for poisson) so exp/log never overflow or divide by 0. */
-        for (i = 0; i < n; i++)
+        int cached = (cwz != NULL && it == 0);
+        if (!cached)
         {
-            double e = eta[i], m, mueta, var;
-            if (family == FAM_BINOMIAL)
+            for (i = 0; i < n; i++)
             {
-                m = 1.0 / (1.0 + exp(-e));                 /* logit^{-1} */
-                if (m < MU_EPS)
-                    m = MU_EPS;
-                else if (m > 1.0 - MU_EPS)
-                    m = 1.0 - MU_EPS;
-                mueta = m * (1.0 - m);                     /* dmu/deta = mu(1-mu) */
-                var   = m * (1.0 - m);                     /* V(mu)    = mu(1-mu) */
+                double e = eta[i], m, mueta, var;
+                if (family == FAM_BINOMIAL)
+                {
+                    m = 1.0 / (1.0 + exp(-e));                 /* logit^{-1} */
+                    if (m < MU_EPS)
+                        m = MU_EPS;
+                    else if (m > 1.0 - MU_EPS)
+                        m = 1.0 - MU_EPS;
+                    mueta = m * (1.0 - m);                     /* dmu/deta = mu(1-mu) */
+                    var   = m * (1.0 - m);                     /* V(mu)    = mu(1-mu) */
+                }
+                else /* poisson */
+                {
+                    if (e >  30.0) e =  30.0;                  /* bound eta: e^30 ~ 1e13 */
+                    if (e < -30.0) e = -30.0;
+                    m = exp(e);                                /* log^{-1} */
+                    if (m < MU_EPS) m = MU_EPS;
+                    mueta = m;                                 /* dmu/deta = mu */
+                    var   = m;                                 /* V(mu)    = mu */
+                }
+                mu[i] = m;
+                w[i]  = pw[i] * mueta * mueta / var;           /* prior weight folded in */
+                z[i]  = eta[i] + (y[i] - m) / mueta;
             }
-            else /* poisson */
-            {
-                if (e >  30.0) e =  30.0;                  /* bound eta: e^30 ~ 1e13 */
-                if (e < -30.0) e = -30.0;
-                m = exp(e);                                /* log^{-1} */
-                if (m < MU_EPS) m = MU_EPS;
-                mueta = m;                                 /* dmu/deta = mu */
-                var   = m;                                 /* V(mu)    = mu */
-            }
-            mu[i] = m;
-            w[i]  = pw[i] * mueta * mueta / var;           /* prior weight folded in */
-            z[i]  = eta[i] + (y[i] - m) / mueta;
         }
 
         /* Step 3: assemble the weighted normal equations of the WLS update with
@@ -295,16 +304,17 @@ int glmirls(int family, const double *y, const double *pw, const double *Dfull, 
          * dsyrk(UPLO='U', TRANS='T') fills the col-major upper triangle of XtWX,
          * which is byte-for-byte the row-major lower triangle cholsolv() reads,
          * so no separate symmetrise step is needed. */
+        const double *wuse = cached ? cu : u;               /* D'Wz right-hand side */
         for (i = 0; i < n; i++)
         {
-            double sw = sqrt(w[i]);
-            u[i] = w[i] * z[i];
+            double sw = cached ? csw[i] : sqrt(w[i]);
+            if (!cached) u[i] = w[i] * z[i];
             for (a = 0; a < q; a++)
                 Dw[(size_t) a * n + i] = sw * Dpack[(size_t) a * n + i];
         }
         F77_CALL(dsyrk)("U", "T", &q, &n, &d_one, Dw, &n, &d_zero, XtWX, &q FCONE FCONE);
         int inc1 = 1;
-        F77_CALL(dgemv)("T", &n, &q, &d_one, Dpack, &n, u, &inc1, &d_zero, XtWz, &inc1 FCONE);
+        F77_CALL(dgemv)("T", &n, &q, &d_one, Dpack, &n, wuse, &inc1, &d_zero, XtWz, &inc1 FCONE);
 
         /* solve D'WD beta = D'Wz; a singular system means a collinear model */
         if (cholsolv(XtWX, XtWz, beta, q)) return 1;   /* singular */
@@ -505,14 +515,23 @@ typedef struct {
     double *D, *wq, *wn, *Dpack, *Dw;
     double *bfull, *b0, *bprop;   /* warm-start coefficients */
     double m2ll_const;            /* data-only -2logLik constant, precomputed once */
+    double *cwz;                  /* shared first-step weights for addition proposals */
+    /* glm batched add-scoring (irlsbatch / irlssafe / irlsic) */
+    double *Gpan, *Gfac, *Gwb, *Ggd, *Ggv, *Gs2, *Gcj, *GDws, *Getah, *Getac, *Gmuc;
+    int    *Gact;                 /* active set the panel was built from */
+    int    Gnq;                   /* its size, i.e. the panel's leading dimension */
+    /* gaussian batched add-scoring (addbatch / addic) */
+    double *Ufac, *Uw, *Upan, *zsq, *spiv;
 } fitctx;
 
 /* Information criterion of the model with the given active column set.
  * active[0] = 0 (intercept); active[r] = (X-column index)+1 for r >= 1.
  * q = number of coefficients.  maxit caps the IRLS iterations of the glm fit
  * (IRLS_MAXIT for a full fit, 1 for the one-step fast proposal; ignored on the
- * gaussian path, which has no iteration).  Sets *ok = 0 if the fit failed. */
-static double modelic(fitctx *c, const int *active, int q, int maxit, int *ok)
+ * gaussian path, which has no iteration).  Sets *ok = 0 if the fit failed.
+ * cached != 0 uses the shared first-step weights in c->cwz, which is valid only for
+ * a one-step fit of the model those weights were built from plus one column. */
+static double modelic(fitctx *c, const int *active, int q, int maxit, int *ok, int cached)
 {
     if (c->family == FAM_GAUSSIAN)
     {
@@ -539,7 +558,7 @@ static double modelic(fitctx *c, const int *active, int q, int maxit, int *ok)
          * (built once as [1 | X]) -- no per-fit design rebuild. */
         for (int r = 0; r < q; r++) c->b0[r] = c->bfull[active[r]];
         double dev2;
-        if (glmirls(c->family, c->y, c->pw, c->D, active, c->n, q, maxit, c->wq, c->wn, c->Dpack, c->Dw, &dev2, c->b0, c->bprop))
+        if (glmirls(c->family, c->y, c->pw, c->D, active, c->n, q, maxit, c->wq, c->wn, c->Dpack, c->Dw, &dev2, c->b0, c->bprop, cached ? c->cwz : NULL))
         {
             *ok = 0;
             return 0.0;
@@ -549,6 +568,445 @@ static double modelic(fitctx *c, const int *active, int q, int maxit, int *ok)
          * data-only constant to recover the full -2logLik (see glmllconst). */
         return icval(dev2 + c->m2ll_const, q, q - 1, c->n, c->info, c->gamma, c->p0);
     }
+}
+
+/*
+ * Build the first-step weights shared by every addition proposal off the current
+ * binomial/poisson model, into c->cwz as the u = w*z and sqrt(w) pair glmirls
+ * expects (see its cwz argument).
+ *
+ * A proposal warm-starts from the current model's coefficients with zero on the
+ * column being added, so its initial linear predictor is the current model's
+ * whatever column that is, and every quantity the first Newton step derives from
+ * it -- the mean, the IRLS weight, the working response -- is shared by all p
+ * candidates.  The sampler recomputes them per proposal today; this computes them
+ * once per accepted move instead.  Removals are excluded: dropping a coefficient
+ * changes the linear predictor, so their first step is genuinely their own.
+ *
+ * The arithmetic is glmirls' weight pass verbatim, including the mu clamps, the
+ * poisson eta bound, the left-to-right pw*mueta*mueta/var, and the working response
+ * being formed from the UNCLAMPED eta -- so the cached values are bit-for-bit the
+ * ones the per-proposal path would have produced.
+ */
+static void irlscache(fitctx *c, const int *active, int q)
+{
+    int n = c->n;
+    double *eta = c->wn;
+    double *cu = c->cwz;
+    double *csw = c->cwz + n;
+    double *cw = c->cwz + 2 * n;
+
+    for (int i = 0; i < n; i++) eta[i] = 0.0;
+    for (int a = 0; a < q; a++)
+    {
+        const double *Da = c->D + (size_t) active[a] * n;
+        double ba = c->bfull[active[a]];
+        for (int i = 0; i < n; i++) eta[i] += Da[i] * ba;
+    }
+
+    for (int i = 0; i < n; i++)
+    {
+        double e = eta[i], m, mueta, var;
+        if (c->family == FAM_BINOMIAL)
+        {
+            m = 1.0 / (1.0 + exp(-e));
+            if (m < MU_EPS)
+                m = MU_EPS;
+            else if (m > 1.0 - MU_EPS)
+                m = 1.0 - MU_EPS;
+            mueta = m * (1.0 - m);
+            var   = m * (1.0 - m);
+        }
+        else /* poisson */
+        {
+            if (e >  30.0) e =  30.0;
+            if (e < -30.0) e = -30.0;
+            m = exp(e);
+            if (m < MU_EPS) m = MU_EPS;
+            mueta = m;
+            var   = m;
+        }
+        double wi = c->pw[i] * mueta * mueta / var;
+        double zi = eta[i] + (c->y[i] - m) / mueta;
+        cu[i] = wi * zi;
+        csw[i] = sqrt(wi);
+        cw[i] = wi;
+    }
+}
+
+/*
+ * Prepare the one-step score of EVERY single-column addition to the current
+ * binomial/poisson model at once.
+ *
+ * irlscache() has already fixed the first Newton step's weights W and working
+ * response z, which are shared by all candidates.  In that fixed metric the step for
+ * A + {j} solves the weighted normal equations, and with Ghat = D'WD, ghat = D'Wz
+ * those border the current model's exactly as in the gaussian case:
+ *     S = Ghat[A,A] = U'U,  wbar = U^-T ghat[A],  u_j = U^-T Ghat[A,j],
+ *     s_j^2 = Ghat[j,j] - u_j'u_j,  zeta_j = (ghat[j] - u_j'wbar) / s_j.
+ * The step's coefficients are c_j = zeta_j/s_j on the new column and
+ * bhat - c_j v_j on the active ones, with v_j = U^-1 u_j and bhat = U^-1 wbar, so the
+ * candidate's linear predictor is a rank-one update of the active model's,
+ *     eta_j = D_A bhat + c_j (D[,j] - D_A v_j),
+ * which is what irlsic() finishes per candidate.  Unlike the gaussian path the
+ * deviance is not a by-product of the algebra -- it needs that linear predictor and a
+ * pass over the observations -- so only the normal equations are shared here.
+ *
+ * The panel is qcap x (ptot1 + 1) column-major: column j holds Ghat[A,j] and the one
+ * extra column holds ghat[A], so a single triangular solve produces every u_j and
+ * wbar together.  A second solve overwrites it with every v_j and bhat, which is safe
+ * because s_j^2 and zeta_j are extracted in between.
+ *
+ * Returns 0 on success, or 1 if the current model's own block will not factor, in
+ * which case the caller scores proposals one at a time.
+ */
+static int irlsbatch(fitctx *c, const int *active, int q)
+{
+    int n = c->n;
+    int ptot1 = c->ptot1;
+    int ldp = q;
+    int ncol = ptot1 + 1;
+    const double *cw = c->cwz + 2 * n;
+    const double *cu = c->cwz;
+    double *P = c->Gpan;
+    double *U = c->Gfac;
+
+    /* the weight-scaled active design, and the candidate weighted diagonal */
+    for (int a = 0; a < q; a++)
+    {
+        const double *Da = c->D + (size_t) active[a] * n;
+        double *dst = c->GDws + (size_t) a * n;
+        for (int i = 0; i < n; i++) dst[i] = cw[i] * Da[i];
+    }
+    for (int j = 0; j < ptot1; j++)
+    {
+        const double *Dj = c->D + (size_t) j * n;
+        double s = 0.0;
+        for (int i = 0; i < n; i++) s += cw[i] * Dj[i] * Dj[i];
+        c->Ggd[j] = s;
+    }
+
+    /*
+     * dgemm (BLAS-3) forms a general matrix product.  We need the q x ptot1 panel
+     * Ghat[A,] = (W D_A)' D of every candidate's weighted cross-products with the
+     * active columns, which is one such product and the only O(n q p) work in the
+     * batch.  TRANSA="T" and TRANSB="N" give C = A'B with A = the weight-scaled
+     * active design (n x q, leading dimension n) and B = the block design (n x ptot1,
+     * leading dimension n); m = q rows and ncol = ptot1 columns of output, k = n is
+     * the contracted length, alpha is 1 and beta 0 so C is overwritten, and C is the
+     * panel with leading dimension q.  Each of the two character flags carries its
+     * own hidden Fortran length, hence two FCONE.
+     *
+     * Equivalent R operation: P[, 1:ptot1] <- crossprod(W * D[, A], D).
+     * Netlib references: BLAS dgemm. */
+    double alpha = 1.0, beta = 0.0;
+    F77_CALL(dgemm)("T", "N", &q, &ptot1, &n, &alpha, c->GDws, &n, c->D, &n, &beta, P, &ldp FCONE FCONE);
+
+    /*
+     * dgemv (BLAS-2) forms a matrix-vector product.  Here it gives every candidate's
+     * weighted cross-product with the working response, ghat = D'Wz, in one pass;
+     * W z is already available as the cached u = w*z.  TRANS="T" contracts over the
+     * n rows of the block design (leading dimension n), x is that cached vector with
+     * stride 1, alpha is 1 and beta 0 so the length-ptot1 result y is overwritten,
+     * also with stride 1.
+     *
+     * Equivalent R operation: ghat <- crossprod(D, w * z).
+     * Netlib references: BLAS dgemv. */
+    int inc1 = 1;
+    F77_CALL(dgemv)("T", &n, &ptot1, &alpha, c->D, &n, cu, &inc1, &beta, c->Ggv, &inc1 FCONE);
+
+    /* the active block and right-hand side, the latter as the panel's extra column */
+    for (int r = 0; r < q; r++)
+        for (int s = 0; s < q; s++)
+            U[r + s * q] = P[r + (size_t) active[s] * ldp];
+    for (int r = 0; r < q; r++)
+        P[r + (size_t) ptot1 * ldp] = c->Ggv[active[r]];
+
+    /*
+     * dpotrf (LAPACK) Cholesky-factors the symmetric positive-definite active block
+     * S = U'U once, for reuse by every candidate.  UPLO="U" with leading dimension q
+     * factors it in place from the fully populated copy above; U overwrites the upper
+     * triangle and a non-positive-definite leading minor is reported in info.  A
+     * non-zero info, or a pivot at or below cholsolv's collinearity tolerance, means
+     * the active columns are collinear and the caller must score proposals directly;
+     * the tolerance matches cholsolv so the two paths agree on what is fittable.
+     *
+     * Equivalent R operation: U <- chol(S).
+     * Netlib references: LAPACK dpotrf. */
+    int info;
+    F77_CALL(dpotrf)("U", &q, U, &q, &info FCONE);
+    if (info != 0)
+        return 1;
+    for (int r = 0; r < q; r++)
+        if (U[r + r * q] <= 1e-6)
+            return 1;
+
+    /*
+     * dtrsm (BLAS-3) solves a triangular system with many right-hand sides.  The
+     * first call reduces every panel column g to u = U^-T g, which is the whole
+     * per-candidate cost of the normal equations, and the extra column to wbar.
+     * SIDE="L" with TRANSA="T" solves U'X = B, UPLO="U" and DIAG="N" take U from the
+     * factor above with leading dimension q, alpha is 1, m = q and n = ncol, and B is
+     * the panel with leading dimension q, OVERWRITTEN with the solution.  The second
+     * call then solves U X = B on the same panel, turning each u into v = U^-1 u and
+     * wbar into bhat; s_j^2 and zeta_j are read off between the two, so overwriting is
+     * safe.  Four character flags, hence four FCONE each.
+     *
+     * Equivalent R operation: P <- backsolve(U, P, transpose = TRUE), then
+     * P <- backsolve(U, P).
+     * Netlib references: BLAS dtrsm. */
+    F77_CALL(dtrsm)("L", "U", "T", "N", &q, &ncol, &alpha, U, &q, P, &ldp FCONE FCONE FCONE FCONE);
+
+    for (int r = 0; r < q; r++) c->Gwb[r] = P[r + (size_t) ptot1 * ldp];
+    for (int j = 0; j < ptot1; j++)
+    {
+        const double *pj = P + (size_t) j * ldp;
+        double uu = 0.0, uw = 0.0;
+        for (int r = 0; r < q; r++)
+        {
+            uu += pj[r] * pj[r];
+            uw += pj[r] * c->Gwb[r];
+        }
+        double s2 = c->Ggd[j] - uu;
+        c->Gs2[j] = s2;
+        c->Gcj[j] = (s2 > 0.0) ? (c->Ggv[j] - uw) / s2 : 0.0;
+    }
+
+    F77_CALL(dtrsm)("L", "U", "N", "N", &q, &ncol, &alpha, U, &q, P, &ldp FCONE FCONE FCONE FCONE);
+
+    for (int a = 0; a < q; a++) c->Gact[a] = active[a];
+    c->Gnq = q;
+
+    /* the active model's own one-step linear predictor, which every candidate's is a
+     * rank-one update of */
+    for (int i = 0; i < n; i++) c->Getah[i] = 0.0;
+    for (int a = 0; a < q; a++)
+    {
+        const double *Da = c->D + (size_t) active[a] * n;
+        double ba = P[a + (size_t) ptot1 * ldp];
+        for (int i = 0; i < n; i++) c->Getah[i] += Da[i] * ba;
+    }
+    return 0;
+}
+
+/* Is the batched score for design column j accurate enough to use?  As on the
+ * gaussian path s_j^2 = Ghat[j,j] - u_j'u_j is a cancelling difference, so its
+ * relative accuracy collapses for a column nearly in the span of the active set --
+ * which is also where the collinearity verdict is decided, and where getting the
+ * verdict wrong is worse than getting the score wrong: a proposal the direct fit
+ * rejects draws no uniform, so a changed verdict shifts the random stream for the
+ * whole remaining run.  Candidates inside the margin go to the direct fit. */
+static int irlssafe(fitctx *c, int j)
+{
+    return c->Gs2[j] > 1e-3 * c->Ggd[j];
+}
+
+/* One-step information criterion of the current model plus design column j, finished
+ * from the batch irlsbatch() left behind; pq is the resulting coefficient count.  The
+ * caller has cleared the addition through irlssafe(), so the step is known to be
+ * fittable.  The clamps and the -2logLik are glmirls' final pass verbatim, so the
+ * only difference from scoring the proposal directly is the arithmetic path taken to
+ * its linear predictor. */
+static double irlsic(fitctx *c, int j, int pq)
+{
+    int n = c->n;
+    double cj = c->Gcj[j];
+    const double *Dj = c->D + (size_t) j * n;
+    double *eta = c->Getac;
+    double *mu = c->Gmuc;
+
+    /* eta = etah + c_j (D[,j] - D_A v_j); the panel now holds every v_j, and Gact is
+     * the active set the batch was built from (the sweep has since spliced active[]) */
+    for (int i = 0; i < n; i++) eta[i] = c->Getah[i] + cj * Dj[i];
+    for (int a = 0; a < c->Gnq; a++)
+    {
+        const double *Da = c->D + (size_t) c->Gact[a] * n;
+        double va = cj * c->Gpan[a + (size_t) j * c->Gnq];
+        for (int i = 0; i < n; i++) eta[i] -= Da[i] * va;
+    }
+
+    for (int i = 0; i < n; i++)
+    {
+        double e = eta[i], m;
+        if (c->family == FAM_BINOMIAL)
+        {
+            m = 1.0 / (1.0 + exp(-e));
+            if (m < MU_EPS)
+                m = MU_EPS;
+            else if (m > 1.0 - MU_EPS)
+                m = 1.0 - MU_EPS;
+        }
+        else
+        {
+            if (e >  30.0) e =  30.0;
+            if (e < -30.0) e = -30.0;
+            m = exp(e);
+            if (m < MU_EPS) m = MU_EPS;
+        }
+        mu[i] = m;
+    }
+    double dev2 = glmm2ll(c->family, c->y, mu, c->pw, n);
+    return icval(dev2 + c->m2ll_const, pq, pq - 1, c->n, c->info, c->gamma, c->p0);
+}
+
+/*
+ * Score EVERY single-column addition to the current gaussian model at once.
+ *
+ * Adding column j to the active set A borders the current Gram sub-block,
+ *     S' = [ S   g ]   with  g = G[A,j],  d = G[j,j],
+ *          [ g'  d ]
+ * whose Cholesky factor extends the current one by a single row and column,
+ *     U' = [ U   u ]   with  u = U^{-T} g,  s = sqrt(d - u'u).
+ * Because the leading block of U' is unchanged, the forward solve against the
+ * right-hand side also extends by one entry: with w = U^{-T} Gy[A] fixed,
+ *     z_j = (Gy[j] - u'w) / s     and     RSS_{A+j} = yty - (||w||^2 + z_j^2).
+ * So the only per-candidate work is u_j = U^{-T} G[A,j], and stacking the p+1
+ * candidate columns turns that into ONE triangular solve.  This is what makes the
+ * batch worth doing: a sweep visits every candidate but only changes A when a move
+ * is accepted, which is rare, so the same factor serves thousands of proposals.
+ *
+ * Layout.  The panel P is column-major (ptot1+1) x q with leading dimension
+ * ptot1+1: column c is G[active[c], 0..ptot], which is a CONTIGUOUS run of G
+ * (both triangles are filled by the caller), so building the panel streams
+ * instead of gathering scattered elements.  One extra final row carries
+ * Gy[active], so the same solve returns w in that row.
+ *
+ * On success returns 0, writes ||w||^2 to *rssw, and for each design column j
+ * leaves the squared new pivot in spiv[j] and z_j^2 in zsq[j] -- the two
+ * quantities addic() needs.  Returns 1 if the current model's own sub-block is
+ * not positive definite, in which case the caller must fall back to scoring
+ * proposals one at a time.
+ */
+static int addbatch(fitctx *c, const int *active, int q, double *rssw)
+{
+    int ptot1 = c->ptot1;
+    int ldp = ptot1 + 1;
+    double *U = c->Ufac;
+    double *P = c->Upan;
+    double *w = c->Uw;
+
+    /* S = G[active, active], both triangles, exactly as rsschol gathers it */
+    for (int r = 0; r < q; r++)
+        for (int s = 0; s < q; s++)
+            U[r * q + s] = c->G[active[r] * ptot1 + active[s]];
+
+    /*
+     * dpotrf (LAPACK) Cholesky-factors the symmetric positive-definite S = U'U.
+     * We factor the CURRENT model once here and then reuse U for every candidate
+     * addition, which is the whole point of the batch.  UPLO="U" with leading
+     * dimension q factors S in place (both triangles are populated, so no
+     * transpose is needed); U overwrites the upper triangle and a non-positive-
+     * definite leading minor is reported in info.  A non-zero info, or a pivot
+     * with U[r,r]^2 <= 1e-10, means the current active columns are collinear;
+     * we return 1 and the caller scores proposals individually instead.  The
+     * tolerance matches rsschol so the two paths agree on what is fittable.
+     *
+     * Equivalent R operation: U <- chol(S).
+     * Netlib references: LAPACK dpotrf. */
+    int info;
+    F77_CALL(dpotrf)("U", &q, U, &q, &info FCONE);
+    if (info != 0)
+        return 1;
+    for (int r = 0; r < q; r++)
+        if (U[r * q + r] <= 1e-5)
+            return 1;
+
+    /* panel column c = G[active[c], .] (contiguous), plus Gy[active[c]] last */
+    for (int cc = 0; cc < q; cc++)
+    {
+        memcpy(P + (size_t) cc * ldp, c->G + (size_t) active[cc] * ptot1, (size_t) ptot1 * sizeof(double));
+        P[(size_t) cc * ldp + ptot1] = c->Gy[active[cc]];
+    }
+
+    /*
+     * dtrsm (BLAS-3) solves a triangular system with many right-hand sides.  We
+     * want u_j = U^{-T} G[A,j] for every candidate j; writing those as the rows of
+     * the panel P, the whole set satisfies X U = P, which is dtrsm's SIDE="R",
+     * TRANSA="N" form -- one BLAS-3 call in place of one Cholesky per candidate.
+     * SIDE="R" and TRANSA="N" solve X*U = alpha*P, UPLO="U" and DIAG="N" take U
+     * from the upper triangle of the factor above with leading dimension q, alpha
+     * is 1, m = ptot1+1 rows and n = q columns, and P is OVERWRITTEN with X, so
+     * afterwards row j holds u_j' and the extra final row holds w'.  Each of the
+     * four character flags needs its own hidden Fortran length, hence four FCONE.
+     *
+     * Equivalent R operation: X <- t(backsolve(U, t(P), transpose = TRUE)).
+     * Netlib references: BLAS dtrsm. */
+    double alpha = 1.0;
+    F77_CALL(dtrsm)("R", "U", "N", "N", &ldp, &q, &alpha, U, &q, P, &ldp FCONE FCONE FCONE FCONE);
+
+    for (int cc = 0; cc < q; cc++)
+        w[cc] = P[(size_t) cc * ldp + ptot1];
+    double ww = 0.0;
+    for (int cc = 0; cc < q; cc++)
+        ww += w[cc] * w[cc];
+    *rssw = ww;
+
+    /* accumulate u_j'u_j and u_j'w down each panel column (contiguous in j) */
+    for (int j = 0; j < ptot1; j++)
+        c->spiv[j] = 0.0;
+    for (int j = 0; j < ptot1; j++)
+        c->zsq[j] = 0.0;
+    for (int cc = 0; cc < q; cc++)
+    {
+        const double *pc = P + (size_t) cc * ldp;
+        double wc = w[cc];
+        for (int j = 0; j < ptot1; j++)
+        {
+            c->spiv[j] += pc[j] * pc[j];
+            c->zsq[j] += pc[j] * wc;
+        }
+    }
+
+    /* turn the accumulators into the new pivot s_j^2 and the RSS drop z_j^2 */
+    for (int j = 0; j < ptot1; j++)
+    {
+        double s2 = c->G[(size_t) j * ptot1 + j] - c->spiv[j];
+        c->spiv[j] = s2;
+        if (s2 > 1e-10)
+        {
+            double z = (c->Gy[j] - c->zsq[j]) / sqrt(s2);
+            c->zsq[j] = z * z;
+        }
+        else
+        {
+            c->zsq[j] = 0.0;
+        }
+    }
+    return 0;
+}
+
+/*
+ * Is the batched score for design column j accurate enough to use?
+ *
+ * s_j^2 = G[j,j] - u_j'u_j is a difference of two quantities that converge as the
+ * candidate column approaches the span of the active set, so it is computed with an
+ * absolute error near eps*G[j,j] and its RELATIVE accuracy collapses for a nearly
+ * dependent column -- which is also exactly where the collinearity verdict itself
+ * is decided.  Every candidate inside the margin goes to the direct factorisation,
+ * which is the authority on both the verdict and the score; without that the two
+ * paths disagree about aliased columns, which moves the chain rather than only its
+ * last bits.  Note s_j^2/G[j,j] is one minus the R^2 of regressing column j on the
+ * active set, so the margin below excludes only columns explained to within 1e-3 by
+ * the current model -- effectively aliased ones, a few per design at most -- and
+ * holds the relative error in s_j^2 near eps/1e-3, small enough that the criterion
+ * agrees with the direct fit far past the precision the Metropolis test can resolve.
+ */
+static int addsafe(fitctx *c, int j)
+{
+    return c->spiv[j] > 1e-3 * c->G[(size_t) j * c->ptot1 + j];
+}
+
+/* Information criterion of the current model plus design column j, read out of the
+ * batch that addbatch() left behind; pq is the resulting coefficient count and rssw
+ * the ||w||^2 it reported.  The caller has already cleared the addition through
+ * addsafe(), so the enlarged model is known to be comfortably fittable. */
+static double addic(fitctx *c, int j, int pq, double rssw)
+{
+    double rss = c->yty - (rssw + c->zsq[j]);
+    if (rss < 1e-12)
+        rss = 1e-12;
+    double base = (double) c->n * (log(2.0 * M_PI * rss / (double) c->n) + 1.0) - c->sumlogw;
+    return icval(base, pq + 1, pq - 1, c->n, c->info, c->gamma, c->p0);
 }
 
 /* Allocate the sampler workspace for a design of up to capt columns over n
@@ -583,13 +1041,37 @@ int gbwsallc(gbwst *ws, int capt, int n, int family)
     ws->bfull = NULL;
     ws->b0 = NULL;
     ws->bprop = NULL;
+    ws->cwz = NULL;
+    ws->Gpan = NULL;
+    ws->Gfac = NULL;
+    ws->Gwb = NULL;
+    ws->Ggd = NULL;
+    ws->Ggv = NULL;
+    ws->Gs2 = NULL;
+    ws->Gcj = NULL;
+    ws->GDws = NULL;
+    ws->Getah = NULL;
+    ws->Getac = NULL;
+    ws->Gmuc = NULL;
+    ws->Gact = NULL;
+    ws->Ufac = NULL;
+    ws->Uw = NULL;
+    ws->Upan = NULL;
+    ws->zsq = NULL;
+    ws->spiv = NULL;
 
     if (family == FAM_GAUSSIAN)
     {
+        int qcap = (capt < GBQMAX) ? capt : GBQMAX;   /* batch is capped at GBQMAX coefficients */
         ws->G    = R_Calloc((size_t) capt * capt, double);
         ws->Gy   = R_Calloc((size_t) capt, double);
         ws->Sbuf = R_Calloc((size_t) capt * capt, double);
         ws->bbuf = R_Calloc((size_t) capt, double);
+        ws->Ufac = R_Calloc((size_t) qcap * qcap, double);
+        ws->Uw   = R_Calloc((size_t) qcap, double);
+        ws->Upan = R_Calloc((size_t) (capt + 1) * qcap, double);   /* one extra row carries Gy[active] */
+        ws->zsq  = R_Calloc((size_t) capt, double);
+        ws->spiv = R_Calloc((size_t) capt, double);
     }
     else
     {
@@ -601,6 +1083,20 @@ int gbwsallc(gbwst *ws, int capt, int n, int family)
         ws->bfull = R_Calloc((size_t) capt, double);
         ws->b0    = R_Calloc((size_t) capt, double);
         ws->bprop = R_Calloc((size_t) capt, double);
+        ws->cwz   = R_Calloc((size_t) 3 * n, double);
+        int qcap = (capt < GBQMAX) ? capt : GBQMAX;   /* batch is capped at GBQMAX coefficients */
+        ws->Gpan  = R_Calloc((size_t) qcap * (capt + 1), double);   /* one extra column carries ghat[active] */
+        ws->Gfac  = R_Calloc((size_t) qcap * qcap, double);
+        ws->Gwb   = R_Calloc((size_t) qcap, double);
+        ws->Ggd   = R_Calloc((size_t) capt, double);
+        ws->Ggv   = R_Calloc((size_t) capt, double);
+        ws->Gs2   = R_Calloc((size_t) capt, double);
+        ws->Gcj   = R_Calloc((size_t) capt, double);
+        ws->GDws  = R_Calloc((size_t) n * qcap, double);
+        ws->Getah = R_Calloc((size_t) n, double);
+        ws->Getac = R_Calloc((size_t) n, double);
+        ws->Gmuc  = R_Calloc((size_t) n, double);
+        ws->Gact  = R_Calloc((size_t) capt, int);
     }
     return 0;
 }
@@ -628,23 +1124,61 @@ void gbwsfree(gbwst *ws)
     R_Free(ws->bfull);
     R_Free(ws->b0);
     R_Free(ws->bprop);
+    R_Free(ws->cwz);
+    R_Free(ws->Gpan);
+    R_Free(ws->Gfac);
+    R_Free(ws->Gwb);
+    R_Free(ws->Ggd);
+    R_Free(ws->Ggv);
+    R_Free(ws->Gs2);
+    R_Free(ws->Gcj);
+    R_Free(ws->GDws);
+    R_Free(ws->Getah);
+    R_Free(ws->Getac);
+    R_Free(ws->Gmuc);
+    R_Free(ws->Gact);
+    R_Free(ws->Ufac);
+    R_Free(ws->Uw);
+    R_Free(ws->Upan);
+    R_Free(ws->zsq);
+    R_Free(ws->spiv);
 }
 
-int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int fast, int len, double k, double gamma, int p0, int info, int family, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, gbwst *wsi)
+/* Lower bound in the ascending tail active[1..nact-1]: the first index holding a
+ * value >= val, or nact when every stored value is smaller.  active[0] is the
+ * intercept slot and is never a search candidate, so the scan starts at 1.  A
+ * proposal changes the inclusion vector in one position only, so the sampler
+ * splices that single coordinate at the index returned here rather than rebuilding
+ * the whole list; the spliced list is in the same ascending order the full rebuild
+ * produced, so every candidate fit still sees the same column permutation. */
+int actfind(const int *active, int nact, int val)
+{
+    int lo = 1, hi = nact;
+    while (lo < hi)
+    {
+        int mid = lo + ((hi - lo) >> 1);
+        if (active[mid] < val)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, int p2, const int *smod, int perm, int len, double k, double gamma, int p0, int info, int family, int nvars, rngt *rng, int *omat, double *ofrq, double *oic, gbwst *wsi)
 {
     int ptot  = p1 + p2;
     int ptot1 = ptot + 1;
     int a, b, i;
 
-    /* fast (glm only): score each single-coordinate proposal with ONE warm-
-     * started IRLS step (prop_maxit = 1) -- the warm start is one column from the
-     * current fit, so a single Newton step is an accurate proposal score -- and
-     * re-fit the accepted model to full convergence before committing, so the
-     * recorded ICs and warm-start coefficients stay exact and only the accept/
-     * reject decision uses the cheap approximate score.  fast == 0 (the default,
-     * and the only mode for gaussian, which has no IRLS) fits every proposal to
-     * full convergence. */
-    int prop_maxit = (fast && family != FAM_GAUSSIAN) ? 1 : IRLS_MAXIT;
+    /* Proposal scoring for the iterative families: score each single-coordinate
+     * proposal with ONE warm-started IRLS step (prop_maxit = 1) -- the warm start
+     * is one column from the current fit, so a single Newton step is an accurate
+     * proposal score -- and re-fit the accepted model to full convergence before
+     * committing, so the recorded ICs and warm-start coefficients stay exact and
+     * only the accept/reject decision uses the cheap approximate score.  The
+     * gaussian family has no IRLS, so its direct fit is always exact. */
+    int prop_maxit = (family != FAM_GAUSSIAN) ? 1 : IRLS_MAXIT;
 
     /* Use the caller's workspace, or allocate a private one (main thread only)
      * when wsi is NULL.  Pointing the original locals at the workspace fields
@@ -678,9 +1212,15 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
     c.pw = pw;
     c.G = c.Gy = NULL;
     c.Sbuf = c.bbuf = NULL;
+    c.Ufac = c.Uw = c.Upan = c.zsq = c.spiv = NULL;
     c.D = c.wq = c.wn = NULL;
     c.Dpack = c.Dw = NULL;
     c.bfull = c.b0 = c.bprop = NULL;
+    c.cwz = NULL;
+    c.Gpan = c.Gfac = c.Gwb = c.Ggd = c.Ggv = c.Gs2 = c.Gcj = NULL;
+    c.GDws = c.Getah = c.Getac = c.Gmuc = NULL;
+    c.Gact = NULL;
+    c.Gnq = 0;
     c.yty = 0.0;
     c.sumlogw = 0.0;
     c.m2ll_const = 0.0;
@@ -746,6 +1286,11 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
         c.sumlogw = sumlogw;
         c.Sbuf = Sbuf;
         c.bbuf = bbuf;
+        c.Ufac = ws->Ufac;
+        c.Uw = ws->Uw;
+        c.Upan = ws->Upan;
+        c.zsq = ws->zsq;
+        c.spiv = ws->spiv;
     }
     else
     {
@@ -761,6 +1306,19 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
         c.bfull = bfull;
         c.b0 = b0;
         c.bprop = bprop;
+        c.cwz = ws->cwz;
+        c.Gpan = ws->Gpan;
+        c.Gfac = ws->Gfac;
+        c.Gwb = ws->Gwb;
+        c.Ggd = ws->Ggd;
+        c.Ggv = ws->Ggv;
+        c.Gs2 = ws->Gs2;
+        c.Gcj = ws->Gcj;
+        c.GDws = ws->GDws;
+        c.Getah = ws->Getah;
+        c.Getac = ws->Getac;
+        c.Gmuc = ws->Gmuc;
+        c.Gact = ws->Gact;
         /* data-only -2logLik normalising constant: same for every candidate
          * model, so compute it once here (cf. sumlogw on the gaussian path)
          * instead of recomputing the lgamma terms on every fit. */
@@ -812,7 +1370,11 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
      * first improving proposal is certain to be accepted. */
     int q, ok;
     BUILD_ACTIVE(q);
-    double curic = modelic(&c, active, q, IRLS_MAXIT, &ok);   /* full fit */
+    /* active[0..nact-1] mirrors the current model from here on: the full rebuild
+     * above is the only one, and it also re-seeds nact for the screening path,
+     * where one workspace is reused across many runs with different ptot. */
+    int nact = q;
+    double curic = modelic(&c, active, q, IRLS_MAXIT, &ok, 0);   /* full fit */
     if (!ok)
         curic = R_PosInf;
     else
@@ -820,6 +1382,46 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
 
     if (ofrq)
         for (a = 0; a < p1; a++) ofrq[a] = 0.0;
+
+    /*
+     * Batched add-scoring state (gaussian only).  The batch is valid for exactly
+     * one active set, so `batch` marks it stale after every accepted move and it
+     * is rebuilt lazily on the next addition proposal (batch < 0 records an active
+     * set whose own sub-block would not factor, so it is attempted only once).
+     *
+     * Building it touches ptot1*q doubles, while it saves one q x q factorisation
+     * per addition scored from it, so it pays only when many additions are scored
+     * before a move is accepted.  That splits on how much room the size cap leaves.
+     * A criterion holding the model well below the cap accepts well under one move
+     * per sweep, so a single batch serves thousands of proposals.  A chain pressed
+     * against the cap is the opposite: an accepted addition puts it back at the
+     * ceiling, where every further addition is discarded by the cap before any fit,
+     * so the batch would serve almost nobody and the per-proposal path is already
+     * cheap for exactly the same reason.  Requiring the model to be at most half
+     * the cap keeps the batch to the first regime; testing the cap rather than the
+     * observed accept rate keeps the decision deterministic, which matters because
+     * accept intervals are geometric and a rate-based rule mistakes an ordinary
+     * short interval for the wrong regime.
+     */
+    int usebatch = (family == FAM_GAUSSIAN);
+    int batch = 0;
+    double rssw = 0.0;
+
+    /* The binomial/poisson analogue: the first Newton step of an addition proposal
+     * derives its weights from the current model's linear predictor, so they are
+     * shared by every candidate.  `icache` marks them valid; like the gaussian
+     * batch they are built lazily on the first addition and go stale as soon as a
+     * move is accepted, and they start invalid because one workspace serves many
+     * runs with different designs. */
+    int usecache = (family != FAM_GAUSSIAN);
+    int icache = 0;
+
+    /* The iterative families' batched one-step scorer, gated and invalidated exactly
+     * like the gaussian one: it shares the cached weights above, so it goes stale on
+     * the same event, and it is worth building for the same reason -- one panel serves
+     * every addition until a move is accepted. */
+    int useglmb = (family != FAM_GAUSSIAN);
+    int gbatch = 0;
 
     /* Run 2*len sweeps; the first `len` are burn-in (discarded), the second
      * `len` are recorded.  One sweep = p1 single-coordinate flip attempts. */
@@ -851,10 +1453,87 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
             int pnsel = nsel + (inc[j] ? -1 : 1);
             if (pnsel < 1 || pnsel > nvars) continue;
 
+            /* Splice coordinate j into (or out of) the sorted active list at its
+             * ascending position.  r and drop are kept because a rejected proposal
+             * must put the list back exactly as it was: active[] mirrors the
+             * current model, and only an accept makes the spliced list current. */
+            int drop = inc[j];
+            int val = j + 1;
+            int r = actfind(active, nact, val);
+
+            /* An addition is scored out of the batch for the current active set,
+             * built here on demand -- while active[] still holds that set -- and
+             * then reused until a move is accepted.  A removal is not a bordered
+             * system, so it keeps the per-proposal fit; so do models too large for
+             * the batch to pay, and (batch < 0) any active set whose own Gram
+             * sub-block will not factor, which is recorded so it is tried once. */
+            int batched = 0;
+            if (usebatch && !drop && nact <= GBQMAX && 2 * pnsel <= nvars)
+            {
+                if (!batch)
+                    batch = (addbatch(&c, active, nact, &rssw) == 0) ? 1 : -1;
+                if (batch > 0 && addsafe(&c, val))
+                    batched = 1;
+            }
+
+            /* the same lazy build for the iterative families' shared weights, and
+             * then for the panel that scores every addition from them */
+            int cached = 0;
+            int gbatched = 0;
+            if (usecache && !drop)
+            {
+                if (!icache)
+                {
+                    irlscache(&c, active, nact);
+                    icache = 1;
+                }
+                cached = 1;
+                /* nact*nact <= ptot the amortisation condition: building the panel
+                 * costs about n*q*ptot1 and each addition scored from it saves about
+                 * one n*q*q fit, so the panel repays itself within q additions and
+                 * the rest of the sweep is profit only while q*q stays under the
+                 * candidate count.  It is what keeps the batch out of the block
+                 * screening sweeps, where a handful of candidates and a chain that
+                 * moves several times per sweep invalidate the panel long before it
+                 * has paid for itself -- measured at 0.89x for poisson blocks of 60
+                 * without this test, against 2.3x for the full sampler. */
+                if (useglmb && nact <= GBQMAX && 2 * pnsel <= nvars && nact * nact <= ptot1)
+                {
+                    if (!gbatch)
+                        gbatch = (irlsbatch(&c, active, nact) == 0) ? 1 : -1;
+                    if (gbatch > 0 && irlssafe(&c, val))
+                        gbatched = 1;
+                }
+            }
+
             inc[j] ^= 1;                       /* tentatively flip coordinate j */
             int pq;
-            BUILD_ACTIVE(pq);
-            double propic = modelic(&c, active, pq, prop_maxit, &ok);
+            if (drop)
+            {
+                memmove(active + r, active + r + 1, (size_t) (nact - r - 1) * sizeof(int));
+                pq = nact - 1;
+            }
+            else
+            {
+                memmove(active + r + 1, active + r, (size_t) (nact - r) * sizeof(int));
+                active[r] = val;
+                pq = nact + 1;
+            }
+            double propic;
+            if (batched)
+            {
+                propic = addic(&c, val, pq, rssw);
+                ok = 1;
+            }
+            else if (gbatched)
+            {
+                propic = irlsic(&c, val, pq);
+                ok = 1;
+            }
+            else
+            {
+                propic = modelic(&c, active, pq, prop_maxit, &ok, cached);
+            }
 
             /* Metropolis acceptance A = min(1, exp{k*(IC_cur - IC_prop)}):
              * always accept an improvement (IC_prop < IC_cur => A>=1), accept a
@@ -867,24 +1546,66 @@ int rungibbs(const double *y, const double *X, const double *pw, int n, int p1, 
                 if (UNIF(rng) < A) accept = 1;
                 if (accept)
                 {
-                    /* fast mode: the proposal was scored with a single IRLS step,
-                     * so re-fit the accepted model to full convergence -- this
-                     * refreshes bprop (the next warm start) and the recorded IC
-                     * to their exact values.  Falls back to the one-step score if
-                     * the full re-fit turns singular (bprop then keeps the
-                     * one-step coefficients). */
-                    if (prop_maxit != IRLS_MAXIT)
+                    /* Any proposal scored approximately is re-fitted directly here,
+                     * so the recorded criterion and the collinearity verdict come
+                     * from the exact factorisation.  Two scores are approximate: the
+                     * single IRLS step of the iterative families, and a batched
+                     * bordered update, which differs from a direct factorisation of
+                     * the same model in the last bits.  One re-fit covers both -- a
+                     * batched proposal of an iterative family must not be fitted
+                     * twice.  If the direct fit is singular the families part ways:
+                     * the gaussian batch needs a usable factor to continue, so the
+                     * move is rejected, while an iterative family keeps the one-step
+                     * score and the one-step coefficients in bprop.  A batch-scored
+                     * acceptance has no one-step coefficients yet -- irlsic derives
+                     * the criterion from the panel without ever writing bprop -- so
+                     * its one-step fit is recovered here by the same call the
+                     * per-proposal path makes, keeping the score and bprop on that
+                     * convention; if even the one-step system is singular the
+                     * proposal was never fittable and the move is rejected. */
+                    if (prop_maxit != IRLS_MAXIT || batched || gbatched)
                     {
                         int ok2;
-                        double exic = modelic(&c, active, pq, IRLS_MAXIT, &ok2);
-                        if (ok2) propic = exic;
+                        double exic = modelic(&c, active, pq, IRLS_MAXIT, &ok2, 0);
+                        if (ok2)
+                            propic = exic;
+                        else if (family == FAM_GAUSSIAN)
+                            accept = 0;
+                        else if (gbatched)
+                        {
+                            int ok3;
+                            double onic = modelic(&c, active, pq, prop_maxit, &ok3, cached);
+                            if (ok3)
+                                propic = onic;
+                            else
+                                accept = 0;
+                        }
                     }
+                }
+                if (accept)
+                {
                     curic = propic;
                     nsel   = pnsel;
+                    nact   = pq;               /* the spliced list is now current */
+                    batch  = 0;                /* the active set moved: batch stale */
+                    icache = 0;                /* and so are the shared weights */
+                    gbatch = 0;                /* and the panel built from them */
                     COMMIT_BETA(pq);
                 }
             }
-            if (!accept) inc[j] ^= 1;          /* reject: undo the flip */
+            if (!accept)
+            {
+                inc[j] ^= 1;                   /* reject: undo the flip */
+                if (drop)                      /* and undo the splice */
+                {
+                    memmove(active + r + 1, active + r, (size_t) (nact - r - 1) * sizeof(int));
+                    active[r] = val;
+                }
+                else
+                {
+                    memmove(active + r, active + r + 1, (size_t) (nact - r) * sizeof(int));
+                }
+            }
         }
 
         /* record the post-burn-in samples: indicator row, running inclusion
@@ -1033,7 +1754,7 @@ void srwsfree(srwst *ws)
  * included.  Writes the marginal inclusion probability of every S1 column into
  * vfreq[] at its original column position.  Returns 0 on success, 1 on failure.
  */
-static int scrblks(const double *y, const double *X, const double *pw, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int fast, int start_full, int len, double k, double gamma, int p0, int info, int family, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
+static int scrblks(const double *y, const double *X, const double *pw, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int len, double k, double gamma, int p0, int info, int family, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
 {
     /* group the S1 positions by block: pos[off[b] .. off[b]+sz[b]-1] */
     int *sz  = R_Calloc((size_t) (h > 0 ? h : 1), int);
@@ -1090,12 +1811,12 @@ static int scrblks(const double *y, const double *X, const double *pw, int n, co
         double *Xb    = ws->Xb;
 
         /* this block's design = [its pb S1 columns (toggleable) | the nS2 fixed
-         * S2 columns]; the toggleable columns start all-in (start_full) or empty
-         * (null start).  Gather the columns into the workspace's reusable buffer. */
+         * S2 columns]; the toggleable columns start empty (null start).  Gather
+         * the columns into the workspace's reusable buffer. */
         for (int c = 0; c < pb; c++)
         {
             bcols[c] = S1[pos[off[b] + c]];
-            s0[c]    = start_full ? 1 : 0;
+            s0[c]    = 0;
         }
         for (int c = 0; c < nS2; c++) bcols[pb + c] = S2[c];
         for (int c = 0; c < pb + nS2; c++)
@@ -1105,7 +1826,7 @@ static int scrblks(const double *y, const double *X, const double *pw, int n, co
          * within-block sampler reports only the inclusion frequencies `fr` */
         rngt rng;
         rngseed(&rng, seeds[b]);
-        int rc = rungibbs(y, Xb, pw, n, pb, nS2, s0, perm, fast, len, k, gamma, p0, info, family, pb + nS2, &rng, NULL, fr, NULL, ws);
+        int rc = rungibbs(y, Xb, pw, n, pb, nS2, s0, perm, len, k, gamma, p0, info, family, pb + nS2, &rng, NULL, fr, NULL, ws);
         if (rc)
         {
             #ifdef _OPENMP
@@ -1168,25 +1889,24 @@ static void drwblks(int nS1, int h, int *assign, uint64_t *seeds)
 /* Public entry points.                                               */
 /* ------------------------------------------------------------------ */
 
-int gibbssam(const double *y, const double *X, const double *pw, int n, int p, int nvars, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int *mbuf, double *sicbuf, double *vpbuf)
+int gibbssam(const double *y, const double *X, const double *pw, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, int family, int *mbuf, double *sicbuf, double *vpbuf)
 {
     if (nvars < 1) nvars = 1;
     if (nvars > p) nvars = p;
 
     /* standalone sampler: all p predictors are toggleable (p2 = 0) and the size
-     * is capped at nvars.  The start model is either the first nvars columns
-     * (start_full) or empty (null start, intercept only).  rng = NULL means it
-     * uses R's RNG on the main thread (serial). */
-    int *s0 = (int *) malloc((size_t) p * sizeof(int));
+     * is capped at nvars.  The start model is empty (null start, intercept only),
+     * so the zero-filled s0 is the start model.  rng = NULL means it uses R's RNG
+     * on the main thread (serial). */
+    int *s0 = (int *) calloc((size_t) p, sizeof(int));
     if (!s0) return 1;
-    for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
-    int fail = rungibbs(y, X, pw, n, p, 0, s0, perm, fast, len, k, gamma, p, info, family, nvars, /*rng=*/NULL, mbuf, vpbuf, sicbuf, /*ws=*/NULL);
+    int fail = rungibbs(y, X, pw, n, p, 0, s0, perm, len, k, gamma, p, info, family, nvars, /*rng=*/NULL, mbuf, vpbuf, sicbuf, /*ws=*/NULL);
     free(s0);
     return fail;
 }
 
-int ibgssel(const double *y, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int fast, int start_full, int len, double k, double gamma, int info, int family, int nthr, int *xsout, int *psout, int *lfout)
+int ibgssel(const double *y, const double *X, const double *pw, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, int family, int nthr, int *xsout, int *psout, int *lfout)
 {
     int p0 = p;
 
@@ -1219,7 +1939,7 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
         int h = nblks(nS1, H, n, nS2);
         drwblks(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, fast, start_full, len, k, gamma, p0, info, family, nthr, assign, ws.seeds, vfreq);
+        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, len, k, gamma, p0, info, family, nthr, assign, ws.seeds, vfreq);
         if (fail) break;
 
         /* SELECT: the top-kapp S1 predictors by inclusion frequency, unioned
@@ -1245,8 +1965,8 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
         int    *s0 = ws.s0;
         double *fr = ws.fr;
         gathcols(X, n, xs, ps, Xs);
-        for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
-        fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, fast, len, k, gamma, p0, info, family, ps, NULL, NULL, fr, NULL, NULL);
+        for (int i = 0; i < ps; i++) s0[i] = 0;
+        fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, len, k, gamma, p0, info, family, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
 
         /* THRESHOLD: rebuild S2 from the candidates with fr > tau.  If no
@@ -1283,7 +2003,7 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
         int h = nblks(nS1, H, n, nS2);
         drwblks(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, fast, start_full, len, k, gamma, p0, info, family, nthr, assign, ws.seeds, vfreq);
+        fail = scrblks(y, X, pw, n, S1, nS1, S2, nS2, h, perm, len, k, gamma, p0, info, family, nthr, assign, ws.seeds, vfreq);
 
         if (!fail)
         {
@@ -1323,15 +2043,14 @@ int ibgssel(const double *y, const double *X, const double *pw, int n, int p, in
  *   sel   : OUTPUT int[ps] 1-based original indices of the candidate columns.
  * Allocates its gather/run scratch with R_Calloc/R_Free (main thread); returns 0
  * on success, 1 on a numerical failure. */
-int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, int fast, int start_full, double k, double gamma, int info, int family, int *omat, double *oic, double *vprob, int *sel)
+int ibgsrun(const double *y, const double *X, const double *pw, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, int family, int *omat, double *oic, double *vprob, int *sel)
 {
     double *Xs = R_Calloc((size_t) n * ps, double);
-    int    *s0 = R_Calloc((size_t) ps, int);
+    int    *s0 = R_Calloc((size_t) ps, int);   /* zeroed: the chain starts empty */
     double *fr = R_Calloc((size_t) ps, double);
 
     gathcols(X, n, xs, ps, Xs);
-    for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
-    int fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, fast, lenf, k, gamma, p, info, family, ps, NULL, omat, fr, oic, NULL);
+    int fail = rungibbs(y, Xs, pw, n, ps, 0, s0, perm, lenf, k, gamma, p, info, family, ps, NULL, omat, fr, oic, NULL);
 
     if (!fail)
     {
@@ -1400,7 +2119,7 @@ void glmcoef(const double *y, const double *X, const double *pw, int n, int q, i
         double *Dpack = R_Calloc((size_t) n * p1, double);
         double *Dw    = R_Calloc((size_t) n * p1, double);
         double dev2;
-        if (glmirls(family, y, pw, D, active, n, p1, IRLS_MAXIT, wq, wn, Dpack, Dw, &dev2, NULL, bout))
+        if (glmirls(family, y, pw, D, active, n, p1, IRLS_MAXIT, wq, wn, Dpack, Dw, &dev2, NULL, bout, NULL))
             for (int a = 0; a < p1; a++) bout[a] = 0.0;
         R_Free(wq);
         R_Free(wn);

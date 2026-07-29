@@ -45,6 +45,13 @@ Maintainer: Lizhong Chen <chen.l@wehi.edu.au>
 Chen, L. (2022). \emph{Model selection and averaging by Gibbs sampler with a
 tropical cyclone seasonal forecasting application}.  PhD thesis, University of
 Melbourne. \url{https://hdl.handle.net/11343/311691}
+
+Chen, J. and Chen, Z. (2008). Extended Bayesian information criteria for model
+selection with large model spaces. \emph{Biometrika} \bold{95}(3), 759--771.
+\doi{10.1093/biomet/asn034}
+
+Chen, J. and Chen, Z. (2012). Extended BIC for small-n-large-P sparse GLM.
+\emph{Statistica Sinica} \bold{22}(2), 555--574. \doi{10.5705/ss.2010.216}
 }
 \seealso{
 \code{\link{glmIBGS}}, \code{\link{coxIBGS}}, \code{\link{lmeIBGS}},

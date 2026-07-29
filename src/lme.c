@@ -8,12 +8,6 @@
  */
 #include "ibgs.h"
 
-#include <R.h>
-#include <Rmath.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -177,6 +171,10 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
 
     int q, ok;
     BUILD_ACTIVE(q);
+    /* active[0..nact-1] mirrors the current model from here on: the full rebuild
+     * above is the only one, and it also re-seeds nact for the screening path,
+     * where one workspace is reused across many runs with different ptot. */
+    int nact = q;
     double curic = LME_IC(q, ok);
     if (!ok) curic = R_PosInf;
 
@@ -208,9 +206,26 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
             int pnsel = nsel + (inc[j] ? -1 : 1);
             if (pnsel < 1 || pnsel > nvars) continue;
 
+            /* Splice coordinate j into (or out of) the sorted active list at its
+             * ascending position.  r and drop are kept because a rejected proposal
+             * must put the list back exactly as it was: active[] mirrors the
+             * current model, and only an accept makes the spliced list current. */
+            int drop = inc[j];
+            int val = j + 1;
+            int r = actfind(active, nact, val);
             inc[j] ^= 1;
             int pq;
-            BUILD_ACTIVE(pq);
+            if (drop)
+            {
+                memmove(active + r, active + r + 1, (size_t) (nact - r - 1) * sizeof(int));
+                pq = nact - 1;
+            }
+            else
+            {
+                memmove(active + r + 1, active + r, (size_t) (nact - r) * sizeof(int));
+                active[r] = val;
+                pq = nact + 1;
+            }
             double propic = LME_IC(pq, ok);
 
             int accept = 0;
@@ -223,9 +238,22 @@ int runlmegb(const double *ystar, const double *Xstar, const double *istar, int 
                 {
                     curic = propic;
                     nsel = pnsel;
+                    nact = pq;                 /* the spliced list is now current */
                 }
             }
-            if (!accept) inc[j] ^= 1;
+            if (!accept)
+            {
+                inc[j] ^= 1;
+                if (drop)                      /* and undo the splice */
+                {
+                    memmove(active + r + 1, active + r, (size_t) (nact - r - 1) * sizeof(int));
+                    active[r] = val;
+                }
+                else
+                {
+                    memmove(active + r, active + r + 1, (size_t) (nact - r) * sizeof(int));
+                }
+            }
         }
 
         if (sw >= len)
@@ -316,7 +344,7 @@ static void lmedrwbl(int nS1, int h, int *assign, uint64_t *seeds)
  * shared whitened intercept istar.  Writes each S1 column's inclusion frequency
  * into vfreq[].  Returns 0 on success, 1 on failure.
  */
-static int lmescrbl(const double *ystar, const double *Xstar, const double *istar, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int start_full, int len, double k, double gamma, int p0, int info, double ldv0, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
+static int lmescrbl(const double *ystar, const double *Xstar, const double *istar, int n, const int *S1, int nS1, const int *S2, int nS2, int h, int perm, int len, double k, double gamma, int p0, int info, double ldv0, int nthr, const int *assign, const uint64_t *seeds, double *vfreq)
 {
     int *sz  = R_Calloc((size_t) (h > 0 ? h : 1), int);
     int *off = R_Calloc((size_t) (h + 1), int);
@@ -369,7 +397,7 @@ static int lmescrbl(const double *ystar, const double *Xstar, const double *ista
         for (int c = 0; c < pb; c++)
         {
             bcols[c] = S1[pos[off[b] + c]];
-            s0[c]    = start_full ? 1 : 0;
+            s0[c]    = 0;
         }
         for (int c = 0; c < nS2; c++) bcols[pb + c] = S2[c];
         for (int c = 0; c < pb + nS2; c++)
@@ -405,21 +433,21 @@ static int lmescrbl(const double *ystar, const double *Xstar, const double *ista
 /* Public entry points.                                               */
 /* ------------------------------------------------------------------ */
 
-int lmegbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf)
+int lmegbsam(const double *ystar, const double *Xstar, const double *istar, int n, int p, int nvars, int perm, int len, double k, double gamma, int info, double ldv0, int *mbuf, double *sicbuf, double *vpbuf)
 {
     if (nvars < 1) nvars = 1;
     if (nvars > p) nvars = p;
 
-    int *s0 = (int *) malloc((size_t) p * sizeof(int));
+    /* zeroed: the chain starts from the empty model (intercept only) */
+    int *s0 = (int *) calloc((size_t) p, sizeof(int));
     if (!s0) return 1;
-    for (int i = 0; i < p; i++) s0[i] = start_full ? ((i < nvars) ? 1 : 0) : 0;
 
     int fail = runlmegb(ystar, Xstar, istar, n, p, 0, s0, perm, len, k, gamma, p, info, ldv0, nvars, /*rng=*/NULL, mbuf, vpbuf, sicbuf, /*ws=*/NULL);
     free(s0);
     return fail;
 }
 
-int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int start_full, int len, double k, double gamma, int info, double ldv0, int nthr, int *xsout, int *psout, int *lfout)
+int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int n, int p, int niter, int H, int kapp, double tau, int perm, int len, double k, double gamma, int info, double ldv0, int nthr, int *xsout, int *psout, int *lfout)
 {
     int p0 = p;
 
@@ -448,7 +476,7 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
         int h = lmenblks(nS1, H, n, nS2);
         lmedrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm, start_full, len, k, gamma, p0, info, ldv0, nthr, assign, ws.seeds, vfreq);
+        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm, len, k, gamma, p0, info, ldv0, nthr, assign, ws.seeds, vfreq);
         if (fail) break;
 
         int kk = (kapp < nS1) ? kapp : nS1;
@@ -470,7 +498,7 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
         int    *s0 = ws.s0;
         double *fr = ws.fr;
         gathcols(Xstar, n, xs, ps, Xs);
-        for (int i = 0; i < ps; i++) s0[i] = start_full ? 1 : 0;
+        for (int i = 0; i < ps; i++) s0[i] = 0;
         fail = runlmegb(ystar, Xs, istar, n, ps, 0, s0, perm, len, k, gamma, p0, info, ldv0, ps, NULL, NULL, fr, NULL, NULL);
         if (fail) break;
 
@@ -503,7 +531,7 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
         int h = lmenblks(nS1, H, n, nS2);
         lmedrwbl(nS1, h, assign, ws.seeds);
         for (int j = 0; j < p; j++) vfreq[j] = 0.0;
-        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm, start_full, len, k, gamma, p0, info, ldv0, nthr, assign, ws.seeds, vfreq);
+        fail = lmescrbl(ystar, Xstar, istar, n, S1, nS1, S2, nS2, h, perm, len, k, gamma, p0, info, ldv0, nthr, assign, ws.seeds, vfreq);
 
         if (!fail)
         {
@@ -544,14 +572,13 @@ int lmeibgsel(const double *ystar, const double *Xstar, const double *istar, int
  *   sel   : OUTPUT int[ps] 1-based original indices of the candidate columns.
  * Allocates its gather/run scratch with R_Calloc/R_Free (main thread); returns 0
  * on success, 1 on a numerical failure. */
-int lmeibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, int start_full, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel)
+int lmeibgrun(const double *ystar, const double *Xstar, const double *istar, int n, int p, const int *xs, int ps, int lenf, int perm, double k, double gamma, int info, double ldv0, int *omat, double *oic, double *vprob, int *sel)
 {
     double *Xs = R_Calloc((size_t) n * ps, double);
-    int    *s0 = R_Calloc((size_t) ps, int);
+    int    *s0 = R_Calloc((size_t) ps, int);   /* zeroed: the chain starts empty */
     double *fr = R_Calloc((size_t) ps, double);
 
     gathcols(Xstar, n, xs, ps, Xs);
-    for (int i = 0; i < ps; i++) s0[i] = 1;
     int fail = runlmegb(ystar, Xs, istar, n, ps, 0, s0, perm, lenf, k, gamma, p, info, ldv0, ps, NULL, omat, fr, oic, NULL);
 
     if (!fail)

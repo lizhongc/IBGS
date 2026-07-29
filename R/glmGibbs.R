@@ -9,6 +9,13 @@
 # glmIBGS(), this sampler does not split the predictors
 # into blocks and is intended for problems where the full design is manageable.
 #
+# The chain starts from the empty model (intercept only) and grows, which avoids
+# the ill-conditioned saturated start where the criterion (notably AICc) can be
+# degenerate.  For the binomial and poisson families each single-coordinate
+# proposal is scored with one warm-started IRLS step and only accepted models are
+# re-fitted to convergence, so the recorded criteria stay exact while the
+# accept/reject decision uses the cheap approximate score.
+#
 # Arguments:
 #   y        the response variable
 #   x        the predictors
@@ -22,7 +29,9 @@
 #   threshold the threshold to select the important predictors, default 0.9
 #   n.draws  the half number of generated samples, default is 1000
 #   inv.temp the tuning parameter, default is 0.5
-#   ebic.gamma the parameter for extended BIC, default is 0.5
+#   ebic.gamma the parameter for extended BIC, default is 1.  Held at the
+#            consistency floor: a value below max(0, 1 - log(n)/(2*log(p))) is
+#            raised to it and a value above 1 is lowered (Chen & Chen, 2012)
 #   criterion the selected model selection criterion from AIC, AICc, BIC and exBIC
 #   family   the model family: "gaussian", "binomial" or "poisson"
 #   weights  optional prior weights (length nrow(x)); as in
@@ -33,18 +42,6 @@
 #            check.  A scalar such as 0.9999 runs an O(p^2) scan of the predictors
 #            and stops if any pair has absolute correlation above it (naming the
 #            offenders), since near-duplicate columns destabilise the fits.
-#   start    the initial model for the Gibbs chain(s): "null" (default) starts
-#            empty (intercept only) and grows, avoiding the ill-conditioned
-#            full-model start where the criterion (notably AICc) can be
-#            degenerate; "full" starts from the saturated model.
-#   fast     for the binomial/poisson families only, a speed/approximation
-#            trade-off in the iterative (IRLS) fit.  FALSE fits every
-#            candidate model to full convergence.  TRUE (default) scores each
-#            single-coordinate proposal with a single warm-started IRLS step and
-#            re-fits only the accepted models to convergence, so the recorded
-#            criteria stay exact but the accept/reject decision uses an
-#            approximate score; much faster when the iterative fit dominates.
-#            Ignored for the gaussian family (a direct, non-iterative fit).
 #
 # Value: an object of class "IBGS" summarising the search, with
 #   components marginal.prob (the marginal inclusion probability of each
@@ -56,19 +53,15 @@
 #   print, summary, coef and plot methods.
 glmGibbs <- function(y, x, max.size = ncol(x), permute = TRUE, n.models = 10,
                          threshold = 0.9, n.draws = 1000, inv.temp = 0.5,
-                         ebic.gamma = 0.5,
+                         ebic.gamma = 1,
                          criterion = c("AIC", "BIC", "AICc", "exBIC"),
                          family = c("gaussian", "binomial", "poisson"),
-                         weights = NULL, cor.check = NULL,
-                         start = c("null", "full"), fast = TRUE){
+                         weights = NULL, cor.check = NULL){
   criterion <- match.arg(criterion)
   family    <- match.arg(family)
-  start     <- match.arg(start)
-  fast      <- isTRUE(fast)
   # 0-based integer codes for the C layer
   info.code   <- match(criterion, c("AIC", "BIC", "AICc", "exBIC")) - 1L
   family.code <- match(family, c("gaussian", "binomial", "poisson")) - 1L
-  start.code  <- match(start, c("null", "full")) - 1L   # 0 = null, 1 = full
 
   x <- as.matrix(x)
   p <- ncol(x)
@@ -80,9 +73,12 @@ glmGibbs <- function(y, x, max.size = ncol(x), permute = TRUE, n.models = 10,
   # optional fail-fast on near-duplicate covariates (cor.check = NULL skips it)
   if (!is.null(cor.check)) .check.high.cor(x, var.names, cor.check)
 
+  # exBIC is selection-consistent only above the Chen & Chen (2012) gamma floor
+  ebic.gamma <- .ebic.gamma.floor(ebic.gamma, criterion, nrow(x), p)
+
   # single, serial (non-block) Metropolis-within-Gibbs run over all p predictors
   out <- .Call("gibbs_sampler_glm",
-               y, x, weights, max.size, permute, fast, start.code, n.draws,
+               y, x, weights, max.size, permute, n.draws,
                inv.temp, ebic.gamma, info.code, family.code, n.models,
                PACKAGE = "IBGS")
 

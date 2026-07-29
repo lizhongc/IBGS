@@ -17,11 +17,6 @@
  */
 #include "ibgs.h"
 
-#include <R.h>
-#include <Rmath.h>
-#include <math.h>
-#include <string.h>
-
 /* arithmetic mean of x[0..n-1] */
 static double mean_d(const double *x, int n)
 {

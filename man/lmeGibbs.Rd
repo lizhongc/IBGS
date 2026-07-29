@@ -15,10 +15,9 @@ lmeGibbs(
   threshold = 0.9,
   n.draws = 1000,
   inv.temp = 0.5,
-  ebic.gamma = 0.5,
+  ebic.gamma = 1,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
-  cor.check = NULL,
-  start = c("null", "full")
+  cor.check = NULL
 )
 }
 \arguments{
@@ -44,12 +43,6 @@ default is \code{ncol(x)}}
 predictor is updated exactly once per sweep (without replacement);
 \code{FALSE} uses a fixed in-order systematic sweep.}
 
-\item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
-starts from the empty model (intercept only) and grows, avoiding the
-ill-conditioned full-model start where the criterion (notably AICc) can be
-degenerate; \code{"full"} starts from the saturated model (the previous
-behaviour).}
-
 \item{n.models}{the number of top selected models, default is 10}
 
 \item{threshold}{the threshold to select the important predictors, default 0.9}
@@ -58,7 +51,12 @@ behaviour).}
 
 \item{inv.temp}{the tuning parameter, default is 0.5}
 
-\item{ebic.gamma}{the parameter for extended BIC, default is 0.5}
+\item{ebic.gamma}{the parameter for extended BIC, default is 1.  The
+extended BIC is selection-consistent only for
+\code{ebic.gamma > 1 - log(n)/(2 log(p))} (Chen and Chen, 2012), so the
+supplied value is held in \code{[max(0, 1 - log(n)/(2 log(p))), 1]}: a
+smaller value is raised to that floor and a larger one lowered to 1, with a
+message reporting the change.}
 
 \item{criterion}{the model selection criterion: AIC, BIC, AICc or exBIC}
 
@@ -102,7 +100,9 @@ squares.  The acceptance rule
 the four information criteria and the model averaging over the top \code{n.models}
 models are as described under \code{\link{glmIBGS}}; the variance component(s) are
 estimated once (random-intercept case, by REML) or supplied, and held fixed.  Use
-\code{\link{lmeIBGS}} in ultrahigh dimensions.
+\code{\link{lmeIBGS}} in ultrahigh dimensions.  The chain starts from the empty
+model (intercept only) and grows, which avoids the ill-conditioned saturated start
+where the criterion (notably AICc) can be degenerate.
 
 Specify the random part with exactly one of: \code{group} (a grouping factor
 for a random intercept; its variance ratio is estimated once by REML),

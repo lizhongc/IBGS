@@ -13,14 +13,12 @@ glmIBGS(
   permute = TRUE,
   n.draws = 250,
   inv.temp = 0.5,
-  ebic.gamma = 0.5,
+  ebic.gamma = 1,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   family = c("gaussian", "binomial", "poisson"),
   weights = NULL,
   n.cores = 1L,
-  cor.check = NULL,
-  start = c("null", "full"),
-  fast = TRUE
+  cor.check = NULL
 )
 }
 \arguments{
@@ -43,25 +41,16 @@ glmIBGS(
 predictor is updated exactly once per sweep (without replacement);
 \code{FALSE} uses a fixed in-order systematic sweep.}
 
-\item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
-starts from the empty model (intercept only; no covariates for the Cox model)
-and grows, avoiding the ill-conditioned full-model start where the criterion
-(notably AICc) can be degenerate; \code{"full"} starts from the saturated model
-(the previous behaviour).}
-
-\item{fast}{for the binomial/poisson families only, a speed/approximation
-trade-off in the iterative (IRLS) fit. \code{FALSE} fits every
-candidate model to full convergence. \code{TRUE} (default) scores each single-coordinate
-proposal with one warm-started IRLS step and re-fits only the accepted models to
-convergence, so the recorded criteria stay exact but the accept/reject decision
-uses an approximate score; much faster when the iterative fit dominates the run.
-Ignored for the gaussian family (a direct, non-iterative fit).}
-
 \item{n.draws}{the half number of generated samples, default is 250}
 
 \item{inv.temp}{the tuning parameter, default is 0.5}
 
-\item{ebic.gamma}{the parameter for extended BIC, default is 0.5}
+\item{ebic.gamma}{the parameter for extended BIC, default is 1.  The
+extended BIC is selection-consistent only for
+\code{ebic.gamma > 1 - log(n)/(2 log(p))} (Chen and Chen, 2012), so the
+supplied value is held in \code{[max(0, 1 - log(n)/(2 log(p))), 1]}: a
+smaller value is raised to that floor and a larger one lowered to 1, with a
+message reporting the change.}
 
 \item{criterion}{the selected model selection criterion from AIC, AICc, BIC and exBIC}
 
@@ -129,7 +118,9 @@ order, flipping it and accepting the flip with probability
 \code{min(1, exp(inv.temp * (IC.current - IC.proposed)))}.  Because a lower
 criterion is better, a flip that lowers the criterion is always accepted and a
 worsening flip is accepted with a probability that decays in the increase; the
-tuning parameter \code{inv.temp} controls how greedy the walk is.  The
+tuning parameter \code{inv.temp} controls how greedy the walk is.  Every chain
+starts from the empty model and grows, which avoids the ill-conditioned saturated
+start where the criterion (notably AICc) can be degenerate.  The
 chain's stationary distribution favours low-criterion models and its visit
 frequencies estimate the marginal inclusion probabilities.  Every candidate
 model is fitted in C -- the gaussian family by ordinary least squares (a
@@ -141,10 +132,14 @@ Models are compared by one of four information criteria, each of the form
 \code{BIC = -2logLik + log(n) npar},
 \code{AICc = AIC + 2 npar (npar + 1) / (n - npar - 1)} (a small-sample AIC), and
 \code{exBIC = BIC + 2 ebic.gamma npred log(p0)} (the extended BIC of Chen and
-Chen, 2008, whose extra term penalises the size \code{p0} of the candidate pool
+Chen, 2012, whose extra term penalises the size \code{p0} of the candidate pool
 and is essential in ultrahigh dimensions where BIC under-penalises).  Here
 \code{npar} counts the estimated parameters and \code{npred} the predictors
-excluding the intercept.
+excluding the intercept.  The extra term only makes \code{exBIC}
+selection-consistent above the floor
+\code{ebic.gamma > 1 - log(n)/(2 log(p0))}, which is why \code{ebic.gamma}
+defaults to 1 and is held at that floor; the former default of 0.5 qualifies
+only while \code{p0 < n}.
 
 The returned object summarises the search: the top \code{n.models} distinct
 models are refit in C to recover their coefficients, and averaged coefficients

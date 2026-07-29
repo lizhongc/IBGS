@@ -11,13 +11,11 @@ glmGibbs(
   threshold = 0.9,
   n.draws = 1000,
   inv.temp = 0.5,
-  ebic.gamma = 0.5,
+  ebic.gamma = 1,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   family = c("gaussian", "binomial", "poisson"),
   weights = NULL,
-  cor.check = NULL,
-  start = c("null", "full"),
-  fast = TRUE
+  cor.check = NULL
 )
 }
 \arguments{
@@ -33,20 +31,6 @@ default is \code{ncol(x)}}
 predictor is updated exactly once per sweep (without replacement);
 \code{FALSE} uses a fixed in-order systematic sweep.}
 
-\item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
-starts from the empty model (intercept only; no covariates for the Cox model)
-and grows, avoiding the ill-conditioned full-model start where the criterion
-(notably AICc) can be degenerate; \code{"full"} starts from the saturated model
-(the previous behaviour).}
-
-\item{fast}{for the binomial/poisson families only, a speed/approximation
-trade-off in the iterative (IRLS) fit. \code{FALSE} fits every
-candidate model to full convergence. \code{TRUE} (default) scores each single-coordinate
-proposal with one warm-started IRLS step and re-fits only the accepted models to
-convergence, so the recorded criteria stay exact but the accept/reject decision
-uses an approximate score; much faster when the iterative fit dominates the run.
-Ignored for the gaussian family (a direct, non-iterative fit).}
-
 \item{n.models}{the number of top selected models, default is 10}
 
 \item{threshold}{the threshold to select the important predictors, default 0.9}
@@ -55,7 +39,12 @@ Ignored for the gaussian family (a direct, non-iterative fit).}
 
 \item{inv.temp}{the tuning parameter, default is 0.5}
 
-\item{ebic.gamma}{the parameter for extended BIC, default is 0.5}
+\item{ebic.gamma}{the parameter for extended BIC, default is 1.  The
+extended BIC is selection-consistent only for
+\code{ebic.gamma > 1 - log(n)/(2 log(p))} (Chen and Chen, 2012), so the
+supplied value is held in \code{[max(0, 1 - log(n)/(2 log(p))), 1]}: a
+smaller value is raised to that floor and a larger one lowered to 1, with a
+message reporting the change.}
 
 \item{criterion}{the selected model selection criterion from AIC, AICc, BIC and exBIC}
 
@@ -103,7 +92,9 @@ under \code{\link{glmIBGS}}, and each candidate is fitted in the same way
 (gaussian by ordinary least squares, binomial and poisson by IRLS).  Because
 every candidate fit may use all \code{p} predictors, this sampler is intended for
 problems where the full design is manageable (\code{p} not much larger than
-\code{n}); use \code{\link{glmIBGS}} in ultrahigh dimensions.
+\code{n}); use \code{\link{glmIBGS}} in ultrahigh dimensions.  The chain starts
+from the empty model (intercept only) and grows, which avoids the ill-conditioned
+saturated start where the criterion (notably AICc) can be degenerate.
 }
 \examples{
 x <- matrix(rnorm(1000), ncol = 10)

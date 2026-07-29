@@ -17,11 +17,10 @@ lmeIBGS(
   permute = TRUE,
   n.draws = 250,
   inv.temp = 0.5,
-  ebic.gamma = 0.5,
+  ebic.gamma = 1,
   criterion = c("AIC", "BIC", "AICc", "exBIC"),
   n.cores = 1L,
-  cor.check = NULL,
-  start = c("null", "full")
+  cor.check = NULL
 )
 }
 \arguments{
@@ -54,17 +53,16 @@ used with \code{Z}}
 predictor is updated exactly once per sweep (without replacement);
 \code{FALSE} uses a fixed in-order systematic sweep.}
 
-\item{start}{the initial model for the Gibbs chain(s). \code{"null"} (default)
-starts from the empty model (intercept only) and grows, avoiding the
-ill-conditioned full-model start where the criterion (notably AICc) can be
-degenerate; \code{"full"} starts from the saturated model (the previous
-behaviour).}
-
 \item{n.draws}{the half number of generated samples, default is 250}
 
 \item{inv.temp}{the tuning parameter, default is 0.5}
 
-\item{ebic.gamma}{the parameter for extended BIC, default is 0.5}
+\item{ebic.gamma}{the parameter for extended BIC, default is 1.  The
+extended BIC is selection-consistent only for
+\code{ebic.gamma > 1 - log(n)/(2 log(p))} (Chen and Chen, 2012), so the
+supplied value is held in \code{[max(0, 1 - log(n)/(2 log(p))), 1]}: a
+smaller value is raised to that floor and a larger one lowered to 1, with a
+message reporting the change.}
 
 \item{criterion}{the model selection criterion: AIC, BIC, AICc or exBIC}
 
@@ -112,8 +110,10 @@ inverse root) reduces each candidate fit to ordinary least squares, so the C
 sampler is the gaussian one applied to the whitened design.  The variance
 component(s) are estimated once -- for a random intercept by REML from the
 largest estimable fixed model -- or supplied directly, and then held fixed across
-all candidate models.  See \code{\link{glmIBGS}} for the screening, sampler and
-criteria details.
+all candidate models.  Every chain starts from the empty model and grows, which
+avoids the ill-conditioned saturated start where the criterion (notably AICc) can
+be degenerate.  See \code{\link{glmIBGS}} for the screening, sampler and criteria
+details.
 
 Specify the random part with exactly one of: \code{group} (a grouping factor
 for a random intercept), \code{Z} + \code{varcomp}, or a marginal covariance

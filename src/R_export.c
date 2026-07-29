@@ -23,12 +23,9 @@
  *   Cox proportional hazards      : cox_ibgs_glm, cox_gibbs_glm
  *   linear mixed model (whitened) : lme_ibgs_glm, lme_gibbs_glm
  */
-#include <R.h>
-#include <Rinternals.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "ibgs.h"
+
+#include <Rinternals.h>
 
 /* ==========================================================================
  * Gaussian / binomial / poisson (computation in glm.c)
@@ -50,7 +47,7 @@
 /*   v.prob     double[p]    marginal inclusion probability (all columns) */
 /*   sel        int[p.s]     1-based original indices of the x.s columns  */
 /* ------------------------------------------------------------------ */
-SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP fast, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP fam, SEXP nthr, SEXP nmod)
+SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP fam, SEXP nthr, SEXP nmod)
 {
     int n = nrows(X), p = ncols(X), family = asInteger(fam);
     SEXP y2 = PROTECT(coerceVector(y, REALSXP));
@@ -60,7 +57,7 @@ SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, 
     int ps = 0, lenf = 0;
 
     GetRNGstate();
-    int fail = ibgssel(REAL(y2), REAL(X2), REAL(pw2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asLogical(fast), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), family, asInteger(nthr), xs, &ps, &lenf);
+    int fail = ibgssel(REAL(y2), REAL(X2), REAL(pw2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(len), asReal(k), asReal(gam), asInteger(info), family, asInteger(nthr), xs, &ps, &lenf);
     if (fail)
     {
         PutRNGstate();
@@ -75,7 +72,7 @@ SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, 
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
     SEXP sel   = PROTECT(allocVector(INTSXP, ps));
 
-    fail = ibgsrun(REAL(y2), REAL(X2), REAL(pw2), n, p, xs, ps, lenf, asLogical(perm), asLogical(fast), asInteger(start), asReal(k), asReal(gam), asInteger(info), family, omat, REAL(msic), REAL(vprob), INTEGER(sel));
+    fail = ibgsrun(REAL(y2), REAL(X2), REAL(pw2), n, p, xs, ps, lenf, asLogical(perm), asReal(k), asReal(gam), asInteger(info), family, omat, REAL(msic), REAL(vprob), INTEGER(sel));
     PutRNGstate();
     if (fail)
     {
@@ -133,7 +130,7 @@ SEXP ibgs_glm(SEXP y, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, 
 /*   the number of top models.  Returns list(coef, model.ic, model.freq,*/
 /*   ic.trace, v.prob) (no sel: the search ranges over all p columns).  */
 /* ------------------------------------------------------------------ */
-SEXP gibbs_sampler_glm(SEXP y, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP fast, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP fam, SEXP nmod)
+SEXP gibbs_sampler_glm(SEXP y, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP fam, SEXP nmod)
 {
     int n = nrows(X), p = ncols(X), nlen = asInteger(len), family = asInteger(fam);
     SEXP y2 = PROTECT(coerceVector(y, REALSXP));
@@ -147,7 +144,7 @@ SEXP gibbs_sampler_glm(SEXP y, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP fast,
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
 
     GetRNGstate();
-    int fail = gibbssam(REAL(y2), REAL(X2), REAL(pw2), n, p, asInteger(nvar), asLogical(perm), asLogical(fast), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), family, omat, REAL(msic), REAL(vprob));
+    int fail = gibbssam(REAL(y2), REAL(X2), REAL(pw2), n, p, asInteger(nvar), asLogical(perm), nlen, asReal(k), asReal(gam), asInteger(info), family, omat, REAL(msic), REAL(vprob));
     PutRNGstate();
     if (fail)
     {
@@ -208,7 +205,7 @@ SEXP gibbs_sampler_glm(SEXP y, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP fast,
 /* .Call: the whole Cox iterated block Gibbs search + summary.         */
 /*   Returns list(coef, model.ic, model.freq, ic.trace, v.prob, sel).  */
 /* ------------------------------------------------------------------ */
-SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP nthr, SEXP nmod)
+SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP nthr, SEXP nmod)
 {
     int n = nrows(X), p = ncols(X);
     SEXP y2 = PROTECT(coerceVector(y, REALSXP));
@@ -219,7 +216,7 @@ SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kap
     int ps = 0, lenf = 0;
 
     GetRNGstate();
-    int fail = coxibgsel(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), asInteger(nthr), xs, &ps, &lenf);
+    int fail = coxibgsel(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(len), asReal(k), asReal(gam), asInteger(info), asInteger(nthr), xs, &ps, &lenf);
     if (fail)
     {
         PutRNGstate();
@@ -233,7 +230,7 @@ SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kap
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
     SEXP sel   = PROTECT(allocVector(INTSXP, ps));
 
-    fail = coxibgrun(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, xs, ps, lenf, asLogical(perm), asInteger(start), asReal(k), asReal(gam), asInteger(info), omat, REAL(msic), REAL(vprob), INTEGER(sel));
+    fail = coxibgrun(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, xs, ps, lenf, asLogical(perm), asReal(k), asReal(gam), asInteger(info), omat, REAL(msic), REAL(vprob), INTEGER(sel));
     PutRNGstate();
     if (fail)
     {
@@ -288,7 +285,7 @@ SEXP cox_ibgs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP niter, SEXP H, SEXP kap
 /* .Call: the standalone (non-block) Cox Gibbs sampler + summary.      */
 /*   Returns list(coef, model.ic, model.freq, ic.trace, v.prob).       */
 /* ------------------------------------------------------------------ */
-SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP nmod)
+SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP nmod)
 {
     int n = nrows(X), p = ncols(X), nlen = asInteger(len);
     SEXP y2 = PROTECT(coerceVector(y, REALSXP));
@@ -303,7 +300,7 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
 
     GetRNGstate();
-    int fail = coxgbsam(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, asInteger(nvar), asLogical(perm), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), omat, REAL(msic), REAL(vprob));
+    int fail = coxgbsam(REAL(y2), INTEGER(st2), REAL(X2), REAL(pw2), n, p, asInteger(nvar), asLogical(perm), nlen, asReal(k), asReal(gam), asInteger(info), omat, REAL(msic), REAL(vprob));
     PutRNGstate();
     if (fail)
     {
@@ -364,7 +361,7 @@ SEXP cox_gibbs_glm(SEXP y, SEXP st, SEXP X, SEXP pw, SEXP nvar, SEXP perm, SEXP 
 /* .Call: the whole lme iterated block Gibbs search + summary.         */
 /*   Returns list(coef, model.ic, model.freq, ic.trace, v.prob, sel).  */
 /* ------------------------------------------------------------------ */
-SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nthr, SEXP nmod)
+SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SEXP tau, SEXP perm, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nthr, SEXP nmod)
 {
     int n = nrows(Xst), p = ncols(Xst);
     SEXP ys2 = PROTECT(coerceVector(ys, REALSXP));
@@ -374,7 +371,7 @@ SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
     int ps = 0, lenf = 0;
 
     GetRNGstate();
-    int fail = lmeibgsel(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(start), asInteger(len), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), asInteger(nthr), xs, &ps, &lenf);
+    int fail = lmeibgsel(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(niter), asInteger(H), asInteger(kapp), asReal(tau), asLogical(perm), asInteger(len), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), asInteger(nthr), xs, &ps, &lenf);
     if (fail)
     {
         PutRNGstate();
@@ -388,7 +385,7 @@ SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
     SEXP sel   = PROTECT(allocVector(INTSXP, ps));
 
-    fail = lmeibgrun(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, lenf, asLogical(perm), asInteger(start), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob), INTEGER(sel));
+    fail = lmeibgrun(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, xs, ps, lenf, asLogical(perm), asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob), INTEGER(sel));
     PutRNGstate();
     if (fail)
     {
@@ -444,7 +441,7 @@ SEXP lme_ibgs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP niter, SEXP H, SEXP kapp, SE
 /* .Call: the standalone (non-block) lme Gibbs sampler + summary.      */
 /*   Returns list(coef, model.ic, model.freq, ic.trace, v.prob).       */
 /* ------------------------------------------------------------------ */
-SEXP lme_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nmod)
+SEXP lme_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP len, SEXP k, SEXP gam, SEXP info, SEXP ldv0, SEXP nmod)
 {
     int n = nrows(Xst), p = ncols(Xst), nlen = asInteger(len);
     SEXP ys2 = PROTECT(coerceVector(ys, REALSXP));
@@ -458,7 +455,7 @@ SEXP lme_gibbs_glm(SEXP ys, SEXP Xst, SEXP ist, SEXP nvar, SEXP perm, SEXP start
     SEXP vprob = PROTECT(allocVector(REALSXP, p));
 
     GetRNGstate();
-    int fail = lmegbsam(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(nvar), asLogical(perm), asInteger(start), nlen, asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob));
+    int fail = lmegbsam(REAL(ys2), REAL(Xst2), REAL(ist2), n, p, asInteger(nvar), asLogical(perm), nlen, asReal(k), asReal(gam), asInteger(info), asReal(ldv0), omat, REAL(msic), REAL(vprob));
     PutRNGstate();
     if (fail)
     {

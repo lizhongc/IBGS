@@ -10,6 +10,10 @@
 # counterpart of glmGibbs(); use lmeIBGS() in ultrahigh
 # dimensions.
 #
+# The chain starts from the empty model (intercept only) and grows, which avoids
+# the ill-conditioned saturated start where the criterion (notably AICc) can be
+# degenerate.
+#
 # Specify the random part with exactly one of: group (a grouping factor
 # for a random intercept; its variance ratio is estimated once by REML),
 # Z + varcomp, or a marginal covariance V.
@@ -33,15 +37,13 @@
 #   threshold  the threshold to select the important predictors, default 0.9
 #   n.draws    the half number of generated samples, default is 1000
 #   inv.temp the tuning parameter, default is 0.5
-#   ebic.gamma the parameter for extended BIC, default is 0.5
+#   ebic.gamma the parameter for extended BIC, default is 1.  Held at the
+#              consistency floor: a value below max(0, 1 - log(n)/(2*log(p))) is
+#              raised to it and a value above 1 is lowered (Chen & Chen, 2012)
 #   criterion  the model selection criterion: AIC, BIC, AICc or exBIC
 #   cor.check optional correlation threshold; NULL (default) skips the
 #            check.  A scalar such as 0.9999 stops if any pair of predictors has
 #            absolute correlation above it.
-#   start    the initial model for the Gibbs chain(s): "null" (default) starts
-#            empty (intercept only) and grows, avoiding the ill-conditioned
-#            full-model start where the criterion (notably AICc) can be
-#            degenerate; "full" starts from the saturated model.
 #
 # Value: an object of class "IBGS" summarising the search, with
 #   components marginal.prob (the marginal inclusion probability of each
@@ -56,13 +58,11 @@
 lmeGibbs <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
                      max.size = ncol(x), permute = TRUE, n.models = 10,
                      threshold = 0.9, n.draws = 1000, inv.temp = 0.5,
-                     ebic.gamma = 0.5,
+                     ebic.gamma = 1,
                      criterion = c("AIC", "BIC", "AICc", "exBIC"),
-                     cor.check = NULL, start = c("null", "full")){
+                     cor.check = NULL){
   criterion <- match.arg(criterion)
-  start     <- match.arg(start)
   info.code <- match(criterion, c("AIC", "BIC", "AICc", "exBIC")) - 1L
-  start.code <- match(start, c("null", "full")) - 1L   # 0 = null, 1 = full
 
   x <- as.matrix(x)
   p <- ncol(x)
@@ -75,9 +75,12 @@ lmeGibbs <- function(y, x, group = NULL, Z = NULL, varcomp = NULL, V = NULL,
   # whiten by the held marginal covariance (estimating variance components once)
   wh <- .lme.whiten(y, x, group, Z, varcomp, V)
 
+  # exBIC is selection-consistent only above the Chen & Chen (2012) gamma floor
+  ebic.gamma <- .ebic.gamma.floor(ebic.gamma, criterion, nrow(x), p)
+
   out <- .Call("lme_gibbs_glm",
                wh$ystar, wh$xstar, wh$istar,
-               max.size, permute, start.code, n.draws, inv.temp, ebic.gamma, info.code,
+               max.size, permute, n.draws, inv.temp, ebic.gamma, info.code,
                wh$logdetV0, n.models,
                PACKAGE = "IBGS")
 

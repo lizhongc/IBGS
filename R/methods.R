@@ -297,3 +297,40 @@ plot.IBGS <- function(x, which = c("ictrace", "margprob", "modelfreq",
   }
   invisible(NULL)
 }
+
+# Internal helper: hold ebic.gamma at the extended-BIC consistency floor.
+#
+# The exBIC penalty 2*gamma*npred*log(p0) is selection-consistent only for
+# gamma > 1 - log(n)/(2*log(p)), equivalently gamma > 1 - 1/(2*kappa) when
+# p = O(n^kappa) (Chen & Chen, 2012).  Below that floor the criterion is
+# inconsistent in exactly the ultrahigh-dimensional regime the samplers target:
+# gamma = 0.5, for instance, only qualifies while kappa < 1, i.e. p < n.  The
+# prior construction gamma = 1 - xi with xi in [0, 1] also bounds gamma to
+# [0, 1], and outside that range the penalty stops penalising -- a negative gamma
+# rewards larger models.  This routine clamps the supplied value into
+# [max(0, floor), 1] and reports any change.  The other three criteria never
+# read gamma, so they are returned untouched.
+#
+# Arguments:
+#   gamma     the supplied ebic.gamma
+#   criterion the resolved criterion name; only "exBIC" uses gamma
+#   n         the effective sample size the criterion itself penalises with:
+#             nrow(x) for the glm and lme samplers, but the event count for the
+#             Cox samplers, whose penalty uses log(d) (see coxicval() in cox.c)
+#   p         the number of candidate predictors (the pool size p0)
+#
+# Value: the gamma to hand to the C layer.
+.ebic.gamma.floor <- function(gamma, criterion, n, p) {
+  if (criterion != "exBIC") return(gamma)             # gamma is unused otherwise
+  if (n < 2 || p < 2) return(min(1, max(gamma, 0)))   # kappa undefined at log(1)
+
+  g.min <- 1 - log(n) / (2 * log(p))
+  out   <- min(1, max(gamma, g.min, 0))
+  if (!isTRUE(all.equal(out, gamma)))
+    message(sprintf(paste0("'ebic.gamma' set to %g (from %g): with effective sample ",
+                           "size n = %d and p = %d predictors the extended BIC is ",
+                           "selection-consistent only for 'ebic.gamma' in [%g, 1], ",
+                           "the lower end being max(0, 1 - log(n)/(2*log(p)))."),
+                    out, gamma, n, p, max(0, g.min)))
+  out
+}

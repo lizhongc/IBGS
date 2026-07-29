@@ -19,6 +19,21 @@
 #ifndef IBGS_IBGS_H
 #define IBGS_IBGS_H
 
+/* The R and C standard headers the package's modules use, collected here rather than
+ * repeated in each .c file.  stdint.h is needed by this header itself, for rngt below.
+ *
+ * Three groups are deliberately NOT here.  Rinternals.h and R_ext/Rdynload.h are
+ * SEXP-level and belong with the .Call shims (R_export.c, init.c), per the no-R-objects
+ * note above.  R_ext/BLAS.h and R_ext/Lapack.h stay in glm.c and cox.c, which must define
+ * USE_FC_LEN_T immediately before them.  omp.h stays behind each file's _OPENMP guard. */
+#include <R.h>
+#include <Rmath.h>
+
+#include <math.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <stdint.h>
 
 /* ============================================================================
@@ -42,6 +57,15 @@ double rngunif(rngt *);
 #define FAM_GAUSSIAN 0
 #define FAM_BINOMIAL 1
 #define FAM_POISSON  2
+
+/* Largest coefficient count for which the gaussian sampler scores all candidate
+ * additions in one batch (see addbatch in glm.c); larger models fall back to the
+ * per-proposal Cholesky.  The batch replaces one O(q^3) factorisation per
+ * candidate with one O(q^2) triangular solve for all of them, so it pays exactly
+ * while q is small -- which is also where it is best conditioned, and where the
+ * size cap is not already discarding the additions for free.  It bounds the panel
+ * workspace at capt * GBQMAX doubles instead of capt^2. */
+#define GBQMAX 64
 
 /* ============================================================================
  * Shared kernels (implemented in glm.c).
@@ -86,8 +110,20 @@ double icval(double, int, int, int, int, double, int);
  * coefficients are written there.
  *
  * maxit caps the IRLS iterations: pass IRLS_MAXIT for a full fit, or 1 for a
- * single warm-started Newton step (the approximate proposal score used by the
- * opt-in fast mode; only meaningful with a warm start b0 close to the optimum).
+ * single warm-started Newton step (the approximate proposal score the sampler
+ * uses; only meaningful with a warm start b0 close to the optimum).
+ *
+ * cwz supplies the first iteration's weights instead of deriving them, as 3*n
+ * doubles holding u = w*z, sqrt(w) and w in that order; the fit itself reads only
+ * the first two, w being there for the batched scorer that shares the same cache.
+ * Pass NULL to derive them as usual.  It exists for the sampler's addition
+ * proposals: a new column warm-starts at zero, so eta = D b0 is the current model's
+ * linear predictor whatever column is being proposed, and every quantity the first
+ * Newton step derives from eta is therefore the same for all of them.  Supplying
+ * the cache skips both the warm-start eta pass and the weight pass; the values are
+ * the ones those passes would have produced, so the fit is unchanged.  Only
+ * meaningful with maxit == 1 and a warm start whose new coordinate is zero -- with
+ * more iterations the later ones re-derive the weights from their own eta anyway.
  *
  * Scratch buffers supplied by the caller (reused across fits):
  *   wq    : at least q*q + 3*q  doubles  (XtWX, XtWz, beta, betaold)
@@ -95,7 +131,7 @@ double icval(double, int, int, int, int, double, int);
  *   Dpack : at least n*q        doubles  (active columns gathered contiguously)
  *   Dw    : at least n*q        doubles  (sqrt(w)-scaled design for the BLAS syrk)
  */
-int glmirls(int, const double *, const double *, const double *, const int *, int, int, int, double *, double *, double *, double *, double *, const double *, double *);
+int glmirls(int, const double *, const double *, const double *, const int *, int, int, int, double *, double *, double *, double *, double *, const double *, double *, const double *);
 
 /*
  * Gaussian OLS residual sum of squares of the active columns, via a Cholesky on
@@ -182,8 +218,31 @@ typedef struct {
     double *G, *Gy, *Sbuf, *bbuf;                /* gaussian Gram path */
     double *D, *wq, *wn, *bfull, *b0, *bprop;   /* GLM IRLS path      */
     double *Dpack, *Dw;  /* GLM IRLS: packed active design + sqrt(w)-scaled copy */
+    /* GLM IRLS addition proposals: the first Newton step's u = w*z and sqrt(w),
+     * which depend only on the current model's linear predictor and so are shared
+     * by every candidate column (see the cwz argument of glmirls), and w itself for
+     * the batched scorer that shares them.  3*n doubles. */
+    double *cwz;
+    /* GLM IRLS batched add-scoring (see irlsbatch in glm.c): Gpan is the panel of
+     * every candidate's weighted cross-products with the active columns, reduced in
+     * place first to u_j then to v_j, with one extra column carrying the active
+     * right-hand side; Gfac the Cholesky factor of the active block; Gwb its forward
+     * solve, then the step's active coefficients; Ggd and Ggv the candidate weighted
+     * diagonal and right-hand side; Gs2 and Gcj the new pivot and the step's
+     * coefficient on the candidate column; GDws the weight-scaled active design;
+     * Getah the step's linear predictor for the active model alone; Getac and Gmuc
+     * per-candidate scratch.  Panel width is bounded by GBQMAX. */
+    double *Gpan, *Gfac, *Gwb, *Ggd, *Ggv, *Gs2, *Gcj, *GDws, *Getah, *Getac, *Gmuc;
+    int    *Gact;        /* the active set the panel was built from */
     int    *bcols, *s0;  /* screening: gathered column ids / start model  */
     double *fr, *Xb;     /* screening: block freqs / gathered block design */
+    /* gaussian batched add-scoring (see addbatch in glm.c): Ufac holds the
+     * Cholesky factor of the current model's Gram sub-block, Uw the forward
+     * solve against its right-hand side, Upan the panel of all candidate
+     * columns solved against Ufac, and zsq / spiv the resulting per-candidate
+     * fit improvement and new Cholesky pivot.  Sized for at most GBQMAX
+     * coefficients since the batch is only used for small models. */
+    double *Ufac, *Uw, *Upan, *zsq, *spiv;
 } gbwst;
 
 /*
@@ -271,7 +330,7 @@ void lmewsfree(lmewst *);
  * info codes:   0 = AIC, 1 = BIC, 2 = AICc, 3 = exBIC.
  * Returns 0 on success, 1 on allocation failure.
  */
-int rungibbs(const double *, const double *, const double *, int, int, int, const int *, int, int, int, double, double, int, int, int, int, rngt *, int *, double *, double *, gbwst *);
+int rungibbs(const double *, const double *, const double *, int, int, int, const int *, int, int, double, double, int, int, int, int, rngt *, int *, double *, double *, gbwst *);
 
 /*
  * The Cox Metropolis-within-Gibbs sampler (cox.c).  The Cox parallel of
@@ -346,6 +405,13 @@ int ficmpdsc(const void *, const void *);
 
 /* qsort comparator: plain int ascending (used to sort selected column ids). */
 int intcmp(const void *, const void *);
+
+/* Lower-bound search in the ascending tail active[1..nact-1] of an active-column
+ * list: returns the first index whose stored value is >= val, or nact if none.
+ * When val is present this is exactly its index.  Used by the glm and lme
+ * samplers to splice one coordinate into/out of the sorted list per proposal
+ * instead of rebuilding the whole list from the inclusion vector. */
+int actfind(const int *, int, int);
 
 /* Gather the m columns cols[0..m-1] of the n-row column-major matrix src into
  * the caller-provided buffer dst (n x m, column-major). */
@@ -440,8 +506,8 @@ void srwsfree(srwst *);
  *   sel   : OUTPUT int[ps]               1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int ibgssel(const double *, const double *, const double *, int, int, int, int, int, double, int, int, int, int, double, double, int, int, int, int *, int *, int *);
-int ibgsrun(const double *, const double *, const double *, int, int, const int *, int, int, int, int, int, double, double, int, int, int *, double *, double *, int *);
+int ibgssel(const double *, const double *, const double *, int, int, int, int, int, double, int, int, double, double, int, int, int, int *, int *, int *);
+int ibgsrun(const double *, const double *, const double *, int, int, const int *, int, int, int, double, double, int, int, int *, double *, double *, int *);
 
 /*
  * Standalone (non-block) restricted Gibbs sampler over all p predictors, model
@@ -452,7 +518,7 @@ int ibgsrun(const double *, const double *, const double *, int, int, const int 
  *   vpbuf  : double[p]
  * Returns 0 on success, 1 on failure.
  */
-int gibbssam(const double *, const double *, const double *, int, int, int, int, int, int, int, double, double, int, int, int *, double *, double *);
+int gibbssam(const double *, const double *, const double *, int, int, int, int, int, double, double, int, int, int *, double *, double *);
 
 /*
  * Single-model GLM coefficient refit behind the glm_coef() .Call wrapper.  Builds
@@ -485,8 +551,8 @@ void glmcoef(const double *, const double *, const double *, int, int, int, doub
  *   sel   : OUTPUT int[ps] 1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int coxibgsel(const double *, const int *, const double *, const double *, int, int, int, int, int, double, int, int, int, double, double, int, int, int *, int *, int *);
-int coxibgrun(const double *, const int *, const double *, const double *, int, int, const int *, int, int, int, int, double, double, int, int *, double *, double *, int *);
+int coxibgsel(const double *, const int *, const double *, const double *, int, int, int, int, int, double, int, int, double, double, int, int, int *, int *, int *);
+int coxibgrun(const double *, const int *, const double *, const double *, int, int, const int *, int, int, int, double, double, int, int *, double *, double *, int *);
 
 /*
  * Standalone (non-block) restricted Cox Gibbs sampler over all p predictors,
@@ -496,7 +562,7 @@ int coxibgrun(const double *, const int *, const double *, const double *, int, 
  *   vpbuf  : double[p]
  * Returns 0 on success, 1 on failure.
  */
-int coxgbsam(const double *, const int *, const double *, const double *, int, int, int, int, int, int, double, double, int, int *, double *, double *);
+int coxgbsam(const double *, const int *, const double *, const double *, int, int, int, int, int, double, double, int, int *, double *, double *);
 
 /*
  * Single-model Cox coefficient refit behind the cox_coef() .Call wrapper.  Fits
@@ -532,15 +598,15 @@ void coxcoef(const double *, const int *, const double *, const double *, int, i
  *   sel   : OUTPUT int[ps] 1-based original column indices.
  * Each returns 0 on success, 1 on failure.
  */
-int lmeibgsel(const double *, const double *, const double *, int, int, int, int, int, double, int, int, int, double, double, int, double, int, int *, int *, int *);
-int lmeibgrun(const double *, const double *, const double *, int, int, const int *, int, int, int, int, double, double, int, double, int *, double *, double *, int *);
+int lmeibgsel(const double *, const double *, const double *, int, int, int, int, int, double, int, int, double, double, int, double, int, int *, int *, int *);
+int lmeibgrun(const double *, const double *, const double *, int, int, const int *, int, int, int, double, double, int, double, int *, double *, double *, int *);
 
 /*
  * Standalone (non-block) lme sampler over all p whitened predictors, capped at
  * nvars.  Writes into caller-provided buffers (mbuf: int[len*(1+p)],
  * sicbuf: double[len], vpbuf: double[p]).  Returns 0 on success, 1 on failure.
  */
-int lmegbsam(const double *, const double *, const double *, int, int, int, int, int, int, double, double, int, double, int *, double *, double *);
+int lmegbsam(const double *, const double *, const double *, int, int, int, int, int, double, double, int, double, int *, double *, double *);
 
 /*
  * Single-model whitened-OLS coefficient refit behind the lme_coef() .Call
